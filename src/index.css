@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+@layer utilities {
+  /* Duolingo 3D button press active effects */
+  .duo-btn-green {
+    background-color: #58cc02;
+    border-bottom: 4px solid #46a302;
+    color: #ffffff;
+    transition: all 0.1s ease;
+  }
+  .duo-btn-green:hover:not(:disabled) {
+    background-color: #61e002;
+  }
+  .duo-btn-green:active:not(:disabled) {
+    transform: translateY(3px);
+    border-bottom-width: 1px;
+    margin-bottom: 3px;
+  }
+
+  .duo-btn-blue {
+    background-color: #1cb0f6;
+    border-bottom: 4px solid #1899d6;
+    color: #ffffff;
+    transition: all 0.1s ease;
+  }
+  .duo-btn-blue:hover:not(:disabled) {
+    background-color: #20bdff;
+  }
+  .duo-btn-blue:active:not(:disabled) {
+    transform: translateY(3px);
+    border-bottom-width: 1px;
+    margin-bottom: 3px;
+  }
+
+  .duo-btn-gray {
+    background-color: #ffffff;
+    border: 2px solid #e5e5e5;
+    border-bottom: 4px solid #e5e5e5;
+    color: #afafaf;
+    transition: all 0.1s ease;
+  }
+  .duo-btn-gray:hover:not(:disabled) {
+    background-color: #f7f7f7;
+    color: #777777;
+  }
+  .duo-btn-gray:active:not(:disabled) {
+    transform: translateY(3px);
+    border-bottom-width: 2px;
+    margin-bottom: 2px;
+  }
+
+  .duo-btn-red {
+    background-color: #ff4b4b;
+    border-bottom: 4px solid #ea2b2b;
+    color: #ffffff;
+    transition: all 0.1s ease;
+  }
+  .duo-btn-red:hover:not(:disabled) {
+    background-color: #ff5e5e;
+  }
+  .duo-btn-red:active:not(:disabled) {
+    transform: translateY(3px);
+    border-bottom-width: 1px;
+    margin-bottom: 3px;
+  }
+
+  .duo-btn-yellow {
+    background-color: #ffc800;
+    border-bottom: 4px solid #e5a400;
+    color: #ffffff;
+    transition: all 0.1s ease;
+  }
+  .duo-btn-yellow:hover:not(:disabled) {
+    background-color: #ffd226;
+  }
+  .duo-btn-yellow:active:not(:disabled) {
+    transform: translateY(3px);
+    border-bottom-width: 1px;
+    margin-bottom: 3px;
+  }
+}
+
+@keyframes duo-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes wave-bar {
+  0%, 100% {
+    height: 8px;
+  }
+  50% {
+    height: 32px;
+  }
+}
+
+@keyframes heart-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+.animate-duo-bounce {
+  animation: duo-bounce 2s infinite ease-in-out;
+}
+
+.animate-heart-pulse {
+  animation: heart-pulse 0.4s ease-in-out;
+}

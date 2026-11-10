@@ -1,0 +1,6 @@
+{
+  "name": "多邻国风西班牙语强化口语练习",
+  "description": "多邻国风格的西班牙语强化口语练习：全中文交互、红心生命值系统、实时语音评测与逐词对比、双速原生TTS与星标难点题库。",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
