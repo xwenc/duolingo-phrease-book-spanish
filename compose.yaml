@@ -1,0 +1,85 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: spanish
+      MYSQL_USER: spanish
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql -h 127.0.0.1 -u spanish spanish -e "SELECT 1"']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  model-download:
+    build: ./backend
+    user: '0:0'
+    command: [python, -c, 'from faster_whisper import download_model; download_model("small", output_dir="/models/small")']
+    volumes:
+      - whisper_models:/models
+    profiles: [setup]
+  init:
+    build: ./backend
+    environment:
+      DATABASE_URL: mysql+pymysql://spanish:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}@mysql:3306/spanish?charset=utf8mb4
+    command: [sh, -c, 'alembic upgrade head && python -m app.seed']
+    depends_on:
+      mysql:
+        condition: service_healthy
+    profiles: [setup]
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: mysql+pymysql://spanish:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}@mysql:3306/spanish?charset=utf8mb4
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      WHISPER_MODEL: /models/small
+      TTS_URL: http://tts:8001
+      RESET_ADMIN_EMAIL: ${RESET_ADMIN_EMAIL:-}
+    volumes:
+      - whisper_models:/models:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://localhost:8000/api/health")']
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 5
+    restart: unless-stopped
+  tts-model-download:
+    build: ./tts
+    user: '0:0'
+    command: [python, download.py]
+    volumes:
+      - tts_voices:/voices
+    profiles: [setup]
+  tts:
+    build: ./tts
+    volumes:
+      - tts_voices:/voices:ro
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://localhost:8001/health")']
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+    restart: unless-stopped
+  web:
+    build: .
+    ports:
+      - '127.0.0.1:3000:80'
+    depends_on:
+      api:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  mysql_data:
+  whisper_models:
+  tts_voices:

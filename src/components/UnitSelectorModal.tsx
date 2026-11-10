@@ -33,7 +33,7 @@ export const UnitSelectorModal: React.FC<UnitSelectorModalProps> = ({
   onSelectUnit,
 }) => {
   if (!isOpen) return null;
-
+  console.log("exercises", exercises);
   // Extract unique units
   const unitsMap = new Map<string, { name: string; count: number }>();
   exercises.forEach((ex) => {

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Mic, MicOff, Keyboard, RotateCcw, Sparkles } from 'lucide-react';
-import { sttService, STTService } from '../services/speechService';
+import { sttService, STTService, TTSService } from '../services/speechService';
 import { soundEffects } from '../services/soundEffects';
 
 interface SpeechRecorderProps {
@@ -14,6 +14,7 @@ interface SpeechRecorderProps {
   isEvaluating: boolean;
   onAutoSubmit?: (text: string) => void;
   disabled?: boolean;
+  shortcutsEnabled?: boolean;
 }
 
 export const SpeechRecorder: React.FC<SpeechRecorderProps> = ({
@@ -21,7 +22,10 @@ export const SpeechRecorder: React.FC<SpeechRecorderProps> = ({
   currentTranscript,
   isEvaluating,
   disabled = false,
+  shortcutsEnabled = true,
 }) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+  useEffect(() => () => sttService.cancel(), []);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isKeyboardMode, setIsKeyboardMode] = useState<boolean>(false);
   const [recordingError, setRecordingError] = useState<string | null>(null);
@@ -41,35 +45,55 @@ export const SpeechRecorder: React.FC<SpeechRecorderProps> = ({
     }
   }, [disabled]);
 
-  const handleStartRecord = () => {
-    if (disabled || isEvaluating) return;
+  const handleStartRecord = (restart = false) => {
+    if (disabled || isEvaluating || (isProcessing && !restart)) return;
+    TTSService.stop();
+    setIsProcessing(true);
     setRecordingError(null);
     soundEffects.playClickSound();
 
     sttService.startListening({
       onStart: () => {
+        setIsProcessing(false);
         setIsRecording(true);
+        onTranscriptChange('');
       },
+      onWarning: (message) => setRecordingError(message),
+      onProcessing: () => { setIsRecording(false); setIsProcessing(true); },
       onInterimResult: (interim) => {
+        setRecordingError(null);
         onTranscriptChange(interim);
       },
       onFinalResult: (final) => {
         onTranscriptChange(final);
       },
       onError: (errMsg) => {
+        setIsProcessing(false);
         setIsRecording(false);
         setRecordingError(errMsg);
       },
       onEnd: () => {
+        setIsProcessing(false);
         setIsRecording(false);
       },
     });
+  };
+
+  const handleRestartRecord = () => {
+    if (disabled || isEvaluating) return;
+    // Invalidate the old session before clearing so late replies cannot restore old text.
+    sttService.cancel();
+    setIsRecording(false);
+    setRecordingError(null);
+    onTranscriptChange('');
+    handleStartRecord(true);
   };
 
   const handleStopRecord = () => {
     soundEffects.playClickSound();
     sttService.stopListening();
     setIsRecording(false);
+    setIsProcessing(true);
   };
 
   const handleToggleRecord = () => {
@@ -79,6 +103,28 @@ export const SpeechRecorder: React.FC<SpeechRecorderProps> = ({
       handleStartRecord();
     }
   };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!shortcutsEnabled || disabled || isEvaluating || isKeyboardMode || !isSupported ||
+          event.defaultPrevented || event.repeat || event.isComposing ||
+          event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]')) return;
+      const isSpace = event.code === 'Space' || event.key === ' ';
+      const isRestart = event.key.toLowerCase() === 'r';
+      if (!isSpace && !isRestart) return;
+      // Keep native Space activation for unrelated controls; recorder controls use
+      // the shortcut once instead of also triggering a synthesized button click.
+      if (isSpace && target?.closest('button, a, summary, [role="button"]') &&
+          !target.closest('[data-recording-control]')) return;
+      event.preventDefault();
+      if (isRestart) handleRestartRecord();
+      else if (!isProcessing) handleToggleRecord();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
 
   const handleInsertChar = (char: string) => {
     soundEffects.playClickSound();
@@ -96,13 +142,13 @@ export const SpeechRecorder: React.FC<SpeechRecorderProps> = ({
       <div className="flex items-center justify-between w-full max-w-lg px-2">
         <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
           <Sparkles className="w-3.5 h-3.5 text-[#1cb0f6]" />
-          {isKeyboardMode ? '键盘输入模式' : '西语原生麦克风识别 (es-ES)'}
+          {isKeyboardMode ? '键盘输入模式' : '西班牙语录音练习'}
         </span>
 
         <button
           onClick={() => {
             soundEffects.playClickSound();
-            if (isRecording) handleStopRecord();
+            sttService.cancel(); setIsRecording(false); setIsProcessing(false);
             setIsKeyboardMode(!isKeyboardMode);
           }}
           className="text-xs font-extrabold text-[#1cb0f6] hover:text-[#1899d6] flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-sky-50 transition-colors"
@@ -136,7 +182,9 @@ export const SpeechRecorder: React.FC<SpeechRecorderProps> = ({
 
             <button
               onClick={handleToggleRecord}
-              disabled={disabled || isEvaluating}
+              data-recording-control
+              aria-keyshortcuts="Space"
+              disabled={disabled || isEvaluating || isProcessing}
               className={`relative z-10 w-20 h-20 rounded-full flex flex-col items-center justify-center shadow-lg transition-all ${
                 isRecording
                   ? 'bg-[#ff4b4b] border-b-4 border-[#ea2b2b] text-white active:translate-y-1'
@@ -161,20 +209,22 @@ export const SpeechRecorder: React.FC<SpeechRecorderProps> = ({
               <span className="w-1.5 bg-[#1cb0f6] rounded-full animate-[wave-bar_0.8s_ease-in-out_0.1s_infinite]" />
               <span className="w-1.5 bg-[#1cb0f6] rounded-full animate-[wave-bar_0.8s_ease-in-out_0.3s_infinite]" />
               <span className="text-xs font-black text-[#1cb0f6] ml-2 animate-pulse">
-                正在倾听，请清晰朗读...
+                正在录音并自动转写…
               </span>
             </div>
           ) : (
             <p className="text-xs font-bold text-slate-400">
-              点击麦克风，大声读出上方西班牙语
+              {isProcessing ? '正在处理录音，请稍候…' : '点击开始，说话后自动转写；再次点击结束'}
             </p>
           )}
+
+          <p className="text-xs text-slate-400 font-bold">快捷键：空格 开始/结束录音 · R 清除并重录</p>
 
           {/* Live Transcript Bubble */}
           <div className="w-full bg-white rounded-2xl border-2 border-slate-200 p-3.5 min-h-[58px] flex items-center justify-between shadow-xs">
             <div className="flex-1 pr-2">
               <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
-                口述实时识别转写：
+                实时转写：
               </div>
               <p
                 className={`text-sm sm:text-base font-bold ${
@@ -185,15 +235,19 @@ export const SpeechRecorder: React.FC<SpeechRecorderProps> = ({
               </p>
             </div>
 
-            {currentTranscript && !isRecording && (
-              <button
-                onClick={handleClear}
-                title="重新录制"
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleRestartRecord}
+              data-recording-control
+              aria-keyshortcuts="R"
+              disabled={disabled || isEvaluating || !isSupported}
+              title="清除转写并立即重新录音"
+              aria-label="清除转写并立即重新录音"
+              className="shrink-0 flex items-center gap-1 px-2 py-2 text-xs font-bold text-[#1cb0f6] hover:bg-sky-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>清除并重录</span>
+            </button>
           </div>
 
           {recordingError && (

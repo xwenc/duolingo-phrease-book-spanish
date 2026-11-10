@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { SPANISH_EXERCISES } from './data/spanishExercises';
+import React, { useState, useEffect, useMemo } from 'react';
+import { api, submitAttempt, type Stats } from './services/api';
+import { AuthGate } from './components/AuthGate';
+import { ResetPracticeModal } from './components/ResetPracticeModal';
 import { Exercise, EvaluationResult } from './types';
-import { evaluateSpokenSpanish } from './utils/diffAlgorithm';
 import { soundEffects } from './services/soundEffects';
-import { TTSService } from './services/speechService';
+import { TTSService, sttService } from './services/speechService';
 import { Header } from './components/Header';
 import { QuestionCard } from './components/QuestionCard';
 import { SpeechRecorder } from './components/SpeechRecorder';
@@ -21,52 +22,35 @@ import { CompletionCelebration } from './components/CompletionCelebration';
 import { OwlMood } from './components/DuoOwl';
 
 export default function App() {
-  // 1. 用户持久化数据（红心、连胜、宝石、经验值、星标生词难点）
-  const [hearts, setHearts] = useState<number>(() => {
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [canResetData, setCanResetData] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [hearts, setHearts] = useState(5);
+  const [streak, setStreak] = useState(0);
+  const [xp, setXp] = useState(0);
+  const [gems, setGems] = useState(0);
+  const [starredIds, setStarredIds] = useState<string[]>([]);
+  const [attemptId, setAttemptId] = useState(() => crypto.randomUUID());
+  const applyStats = (stats: Stats) => {
+    setCanResetData(Boolean(stats.canResetData));
+    setHearts(stats.hearts); setStreak(stats.streak); setXp(stats.xp);
+    setGems(stats.gems); setStarredIds(stats.starredIds);
+  };
+  const load = async () => {
+    setLoading(true); setError('');
     try {
-      const saved = localStorage.getItem('duo_spanish_hearts');
-      return saved !== null ? Math.min(5, Math.max(0, parseInt(saved, 10))) : 5;
-    } catch {
-      return 5;
-    }
-  });
-
-  const [streak, setStreak] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('duo_spanish_streak');
-      return saved !== null ? parseInt(saved, 10) : 3;
-    } catch {
-      return 3;
-    }
-  });
-
-  const [xp, setXp] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('duo_spanish_xp');
-      return saved !== null ? parseInt(saved, 10) : 120;
-    } catch {
-      return 120;
-    }
-  });
-
-  const [gems, setGems] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('duo_spanish_gems');
-      return saved !== null ? parseInt(saved, 10) : 48;
-    } catch {
-      return 48;
-    }
-  });
-
-  const [starredIds, setStarredIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('duo_spanish_starred_ids');
-      return saved ? JSON.parse(saved) : ['u1-4', 'u3-1']; // 预置2道典型易错难点
-    } catch {
-      return ['u1-4', 'u3-1'];
-    }
-  });
-
+      const stats = await api<Stats>('/me');
+      setAuthenticated(true); applyStats(stats);
+      setExercises(await api<Exercise[]>('/exercises'));
+    } catch (err) { setError((err as Error).message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void load(); }, []);
   const [isMuted, setIsMuted] = useState<boolean>(() => soundEffects.getIsMuted());
 
   // 2. 练习状态与模式
@@ -92,51 +76,38 @@ export default function App() {
   // 3. 计算当前激活的题目池
   const activeExercises: Exercise[] = useMemo(() => {
     if (isStarredMode) {
-      const filtered = SPANISH_EXERCISES.filter((ex) => starredIds.includes(ex.id));
-      return filtered.length > 0 ? filtered : SPANISH_EXERCISES.slice(0, 5);
+      const filtered = exercises.filter((ex) => starredIds.includes(ex.id));
+      return filtered.length > 0 ? filtered : exercises.slice(0, 5);
     }
     if (selectedUnitId !== 'all') {
-      const filtered = SPANISH_EXERCISES.filter((ex) => ex.unitId === selectedUnitId);
-      return filtered.length > 0 ? filtered : SPANISH_EXERCISES;
+      const filtered = exercises.filter((ex) => ex.unitId === selectedUnitId);
+      return filtered.length > 0 ? filtered : exercises;
     }
-    return SPANISH_EXERCISES;
-  }, [isStarredMode, selectedUnitId, starredIds]);
+    return exercises;
+  }, [isStarredMode, selectedUnitId, starredIds, exercises]);
 
-  const currentExercise = activeExercises[currentIndex] || activeExercises[0] || SPANISH_EXERCISES[0];
+  const currentExercise = activeExercises[currentIndex] || activeExercises[0] || exercises[0];
 
-  // 持久化存储
   useEffect(() => {
-    try {
-      localStorage.setItem('duo_spanish_hearts', hearts.toString());
-      localStorage.setItem('duo_spanish_streak', streak.toString());
-      localStorage.setItem('duo_spanish_xp', xp.toString());
-      localStorage.setItem('duo_spanish_gems', gems.toString());
-      localStorage.setItem('duo_spanish_starred_ids', JSON.stringify(starredIds));
-    } catch {
-      // ignore
-    }
-  }, [hearts, streak, xp, gems, starredIds]);
+    const showTTSError = (event: Event) => setError((event as CustomEvent<string>).detail);
+    window.addEventListener('tts-error', showTTSError);
+    return () => { window.removeEventListener('tts-error', showTTSError); TTSService.stop(); };
+  }, []);
 
   // 星标列表
   const starredExercises = useMemo(() => {
-    return SPANISH_EXERCISES.filter((ex) => starredIds.includes(ex.id));
-  }, [starredIds]);
+    return exercises.filter((ex) => starredIds.includes(ex.id));
+  }, [starredIds, exercises]);
 
-  // 切换星标
-  const handleToggleStar = useCallback((id: string) => {
-    setStarredIds((prev) => {
-      if (prev.includes(id)) {
-        return prev.filter((item) => item !== id);
-      } else {
-        return [...prev, id];
-      }
-    });
-  }, []);
-
-  // 移除星标
-  const handleRemoveStar = useCallback((id: string) => {
-    setStarredIds((prev) => prev.filter((item) => item !== id));
-  }, []);
+  const updateStar = async (id: string, enabled: boolean) => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { applyStats(await api<Stats>(`/stars/${id}?enabled=${enabled}`, { method: 'PUT' })); }
+    catch (err) { setError((err as Error).message); }
+    finally { setBusy(false); }
+  };
+  const handleToggleStar = (id: string) => { void updateStar(id, !starredIds.includes(id)); };
+  const handleRemoveStar = (id: string) => { void updateStar(id, false); };
 
   // 开启难点专项强化练习
   const handleStartStarredPractice = () => {
@@ -146,6 +117,7 @@ export default function App() {
     setCurrentTranscript('');
     setStatus('unanswered');
     setEvaluationResult(null);
+    setAttemptId(crypto.randomUUID());
     setIsCompleted(false);
   };
 
@@ -157,53 +129,28 @@ export default function App() {
     setCurrentTranscript('');
     setStatus('unanswered');
     setEvaluationResult(null);
+    setAttemptId(crypto.randomUUID());
     setIsCompleted(false);
   };
 
-  // 扣减红心
-  const deductHeart = () => {
-    setHeartLostPulse(true);
-    soundEffects.playHeartLostSound();
-    setTimeout(() => setHeartLostPulse(false), 500);
-
-    setHearts((prev) => {
-      const nextHearts = Math.max(0, prev - 1);
-      if (nextHearts === 0) {
-        setTimeout(() => setIsHeartRestockOpen(true), 600);
-      }
-      return nextHearts;
-    });
+  const check = async (transcript: string) => {
+    if (busy || status !== 'unanswered') return;
+    if (hearts <= 0) { setIsHeartRestockOpen(true); return; }
+    setBusy(true); setError('');
+    try {
+      const { evaluation, stats } = await submitAttempt(currentExercise.id, transcript, attemptId);
+      setSessionXpGained(x => x + Math.max(0, stats.xp - xp));
+      setSessionGemsGained(g => g + Math.max(0, stats.gems - gems));
+      applyStats(stats); setEvaluationResult(evaluation);
+      setStatus(evaluation.isPassed ? 'correct' : 'incorrect');
+      if (evaluation.isPassed) { soundEffects.playCorrectSound(); setSessionCorrectCount(c => c + 1); }
+      else { soundEffects.playIncorrectSound(); setHeartLostPulse(true); setTimeout(() => setHeartLostPulse(false), 500); }
+      if (!stats.hearts) setIsHeartRestockOpen(true);
+    } catch (err) { setError((err as Error).message); }
+    finally { setBusy(false); }
   };
-
-  // 核对答案
-  const handleCheck = () => {
-    if (!currentTranscript.trim()) return;
-
-    const result = evaluateSpokenSpanish(currentExercise.spanish, currentTranscript);
-    setEvaluationResult(result);
-
-    if (result.isPassed) {
-      setStatus('correct');
-      soundEffects.playCorrectSound();
-      setSessionCorrectCount((c) => c + 1);
-      setSessionXpGained((x) => x + 15);
-      setSessionGemsGained((g) => g + 2);
-      setXp((x) => x + 15);
-      setGems((g) => g + 2);
-    } else {
-      setStatus('incorrect');
-      soundEffects.playIncorrectSound();
-      deductHeart();
-    }
-  };
-
-  // 跳过此题
-  const handleSkip = () => {
-    const result = evaluateSpokenSpanish(currentExercise.spanish, '');
-    setEvaluationResult(result);
-    setStatus('incorrect');
-    deductHeart();
-  };
+  const handleCheck = () => { if (currentTranscript.trim()) void check(currentTranscript); };
+  const handleSkip = () => { void check(''); };
 
   // 进入下一题
   const handleNext = () => {
@@ -213,10 +160,11 @@ export default function App() {
       setCurrentTranscript('');
       setStatus('unanswered');
       setEvaluationResult(null);
+      setAttemptId(crypto.randomUUID());
     } else {
       // 达成通关
       setIsCompleted(true);
-      setStreak((s) => s + 1);
+
     }
   };
 
@@ -226,21 +174,33 @@ export default function App() {
     setCurrentTranscript('');
     setStatus('unanswered');
     setEvaluationResult(null);
+    setAttemptId(crypto.randomUUID());
     setIsCompleted(false);
     setSessionCorrectCount(0);
     setSessionXpGained(0);
     setSessionGemsGained(0);
   };
 
-  // 补充红心
-  const handleRefillFull = () => {
-    setHearts(5);
-    setIsHeartRestockOpen(false);
+  const handleRefillFull = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { applyStats(await api<Stats>('/hearts/refill', { method: 'POST' })); setIsHeartRestockOpen(false); }
+    catch (err) { setError((err as Error).message); }
+    finally { setBusy(false); }
   };
 
-  const handleRefillOne = () => {
-    setHearts(1);
-    setIsHeartRestockOpen(false);
+  const handleResetData = async (password: string) => {
+    setBusy(true); setError('');
+    TTSService.stop(); sttService.cancel();
+    try {
+      const result = await api<{ stats: Stats; exercises: Exercise[] }>('/admin/reset-practice', {
+        method: 'POST', body: JSON.stringify({ password, confirmed: true }),
+      });
+      applyStats(result.stats); setExercises(result.exercises);
+      setSelectedUnitId('all'); setIsStarredMode(false); handleRestart();
+      setIsDifficultiesModalOpen(false); setIsHeartRestockOpen(false); setIsUnitSelectorOpen(false);
+      setResetOpen(false); setNotice('练习数据已清空，已载入最新题库，可以重新开始。');
+    } finally { setBusy(false); }
   };
 
   // 确定多邻国猫头鹰表情
@@ -258,8 +218,18 @@ export default function App() {
     soundEffects.setMuted(nextMuted);
   };
 
+  if (loading) return <p className="p-8">正在加载…</p>;
+  if (!authenticated) return <AuthGate onAuthenticated={() => { void load(); }} />;
+  if (!exercises.length) return <div className="p-8"><p>{error || '题库为空，请先导入题库。'}</p><button onClick={() => void load()}>重新加载</button></div>;
+
   return (
     <div className="min-h-screen bg-[#f7f7f7] text-[#4b4b4b] flex flex-col font-['Nunito',sans-serif]">
+      <div className="px-4 pt-2 flex justify-between text-sm"><span>经验值 {xp}</span><button disabled={busy} onClick={async () => { try { await api('/logout', { method: 'POST' }); setAuthenticated(false); handleRestart(); } catch (err) { setError((err as Error).message); } }}>退出登录</button></div>
+      {canResetData && <div className="px-4 text-right"><button disabled={busy} className="text-xs text-red-600 underline" onClick={() => { TTSService.stop(); sttService.cancel(); setResetOpen(true); }}>清空练习数据</button></div>}
+      {resetOpen && <ResetPracticeModal busy={busy} onClose={() => setResetOpen(false)} onReset={handleResetData} />}
+      {notice && <p role="status" className="px-4 text-green-700">{notice}</p>}
+      {error && <p role="alert" className="p-3 text-red-600">{error}</p>}
+      {busy && <div role="status" className="fixed inset-0 z-[100] bg-white/60 flex items-center justify-center" aria-live="polite">正在保存…</div>}
       {/* Duolingo Sticky Top Header */}
       <Header
         currentIndex={currentIndex}
@@ -327,10 +297,12 @@ export default function App() {
             ) : (
               /* Speech Recording / Input Section */
               <SpeechRecorder
+                key={`${currentExercise.id}:${resetOpen}`}
+                shortcutsEnabled={!resetOpen && !isDifficultiesModalOpen && !isHeartRestockOpen && !isUnitSelectorOpen}
                 currentTranscript={currentTranscript}
-                onTranscriptChange={setCurrentTranscript}
+                onTranscriptChange={text => { setCurrentTranscript(text); setAttemptId(crypto.randomUUID()); }}
                 isEvaluating={status !== 'unanswered'}
-                disabled={status !== 'unanswered'}
+                disabled={busy || status !== 'unanswered'}
               />
             )}
           </div>
@@ -341,7 +313,7 @@ export default function App() {
       {!isCompleted && (
         <BottomActionBar
           status={status}
-          hasInput={currentTranscript.trim().length > 0}
+          hasInput={!busy && currentTranscript.trim().length > 0}
           onCheck={handleCheck}
           onSkip={handleSkip}
           onNext={handleNext}
@@ -363,13 +335,12 @@ export default function App() {
         isOpen={isHeartRestockOpen}
         onClose={() => setIsHeartRestockOpen(false)}
         onRefillFull={handleRefillFull}
-        onRefillOne={handleRefillOne}
       />
 
       <UnitSelectorModal
         isOpen={isUnitSelectorOpen}
         onClose={() => setIsUnitSelectorOpen(false)}
-        exercises={SPANISH_EXERCISES}
+        exercises={exercises}
         selectedUnitId={selectedUnitId}
         onSelectUnit={handleSelectUnit}
       />

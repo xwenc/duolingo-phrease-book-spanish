@@ -74,7 +74,7 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
                 非常好！
               </h3>
               <p className="text-xs sm:text-sm font-bold text-emerald-800">
-                {evaluationResult?.encouragement || '发音精准，意思传达非常地道！'}
+                {evaluationResult?.encouragement || '读词完整，继续保持！'}
               </p>
             </div>
           </div>

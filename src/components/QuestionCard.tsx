@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Volume2, Star, ChevronDown, ChevronUp, Sparkles, BookOpen } from 'lucide-react';
 import { Exercise } from '../types';
 import { DuoOwl, OwlMood } from './DuoOwl';
@@ -27,6 +27,13 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const [playingRate, setPlayingRate] = useState<number | null>(null);
   const [showGrammarTip, setShowGrammarTip] = useState<boolean>(false);
   const [activeHintIndex, setActiveHintIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    TTSService.schedule(exercise.spanish, 1000,
+      () => { setIsPlayingTTS(true); setPlayingRate(1); },
+      () => { setIsPlayingTTS(false); setPlayingRate(null); });
+    return () => TTSService.stop();
+  }, [exercise.id, exercise.spanish]);
 
   const handlePlayTTS = (rate: number) => {
     soundEffects.playClickSound();

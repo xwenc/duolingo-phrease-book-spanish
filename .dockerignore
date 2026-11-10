@@ -1,0 +1,13 @@
+node_modules
+.git
+.env
+.env.*
+!.env.example
+backend
+__pycache__
+dist
+
+.local-test
+sources
+docling_output
+.pytest_cache

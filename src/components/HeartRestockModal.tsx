@@ -4,21 +4,19 @@
  */
 
 import React from 'react';
-import { Heart, Sparkles, RefreshCw } from 'lucide-react';
+import { Heart, Sparkles } from 'lucide-react';
 import { DuoOwl } from './DuoOwl';
 import { soundEffects } from '../services/soundEffects';
 
 interface HeartRestockModalProps {
   isOpen: boolean;
   onRefillFull: () => void;
-  onRefillOne: () => void;
   onClose: () => void;
 }
 
 export const HeartRestockModal: React.FC<HeartRestockModalProps> = ({
   isOpen,
   onRefillFull,
-  onRefillOne,
   onClose,
 }) => {
   if (!isOpen) return null;
@@ -54,19 +52,7 @@ export const HeartRestockModal: React.FC<HeartRestockModalProps> = ({
             className="duo-btn-green w-full py-3.5 px-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer"
           >
             <Sparkles className="w-4 h-4 fill-current" />
-            <span>立即加满生命值 (+5 ❤️)</span>
-          </button>
-
-          {/* Option 2: Quick Review +1 */}
-          <button
-            onClick={() => {
-              soundEffects.playClickSound();
-              onRefillOne();
-            }}
-            className="duo-btn-blue w-full py-3 px-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span>快速重整旗鼓 (+1 ❤️)</span>
+            <span>补满红心（10宝石；休息30分钟后免费）</span>
           </button>
 
           {/* Option 3: Cancel / Take a break */}
