@@ -66,8 +66,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             {exercise.difficulty === 'easy'
               ? '初级基础'
               : exercise.difficulty === 'medium'
-              ? '进阶口语'
-              : '高阶地道'}
+                ? '进阶口语'
+                : '高阶地道'}
           </span>
         </div>
 
@@ -77,23 +77,16 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             soundEffects.playClickSound();
             onToggleStar(exercise.id);
           }}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold transition-all ${
-            isStarred
-              ? 'bg-amber-100 text-amber-700 border border-amber-300'
-              : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50 border border-transparent'
-          }`}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold transition-all ${isStarred
+            ? 'bg-amber-100 text-amber-700 border border-amber-300'
+            : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50 border border-transparent'
+            }`}
           title={isStarred ? '已加入难点错题集（点击取消）' : '标记为难点题（加入专项复习）'}
         >
           <Star className={`w-4 h-4 ${isStarred ? 'fill-amber-400 text-amber-500' : ''}`} />
           <span>{isStarred ? '已星标难点' : '标记难点'}</span>
         </button>
       </div>
-
-      {exercise.imageUrl && exercise.imageUrl !== failedImage && (
-        <figure className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white p-2">
-          <img src={exercise.imageUrl} alt={exercise.name ? `${exercise.name}配图` : '句子配图'} className="max-h-64 w-full rounded-xl object-contain" onError={() => setFailedImage(exercise.imageUrl || '')} />
-        </figure>
-      )}
 
       {/* Main Duo Owl & Speech Bubble Container */}
       <div className="flex items-start gap-3 sm:gap-4">
@@ -152,32 +145,36 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             </p>
           </div>
 
-          {/* Vocab Hints Chips */}
-          {exercise.vocabHints && exercise.vocabHints.length > 0 && (
-            <div className="mt-3 pt-2.5 border-t border-slate-100">
-              <span className="text-[11px] font-bold text-slate-400 mr-2">生词速查：</span>
-              <div className="inline-flex flex-wrap gap-1.5 mt-1">
-                {exercise.vocabHints.map((hint, i) => (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      soundEffects.playClickSound();
-                      setActiveHintIndex(activeHintIndex === i ? null : i);
-                      TTSService.speak(hint.es, 0.85);
-                    }}
-                    className={`text-xs px-2 py-0.5 rounded-lg border font-bold transition-all ${
-                      activeHintIndex === i
+          <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-start justify-between">
+            {/* Vocab Hints Chips */}
+            {exercise.vocabHints && exercise.vocabHints.length > 0 && (
+              <div>
+                <span className="text-[11px] font-bold text-slate-400 mr-2">生词速查：</span>
+                <div className="inline-flex flex-wrap gap-1.5 mt-1">
+                  {exercise.vocabHints.map((hint, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        soundEffects.playClickSound();
+                        setActiveHintIndex(activeHintIndex === i ? null : i);
+                        TTSService.speak(hint.es, 0.85);
+                      }}
+                      className={`text-xs px-2 py-0.5 rounded-lg border font-bold transition-all ${activeHintIndex === i
                         ? 'bg-sky-100 border-sky-300 text-sky-800 shadow-xs'
                         : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <span>{hint.es}</span>
-                    <span className="text-[10px] text-slate-400 ml-1">({hint.zh})</span>
-                  </button>
-                ))}
+                        }`}
+                    >
+                      <span>{hint.es}</span>
+                      <span className="text-[10px] text-slate-400 ml-1">({hint.zh})</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+            {exercise.imageUrl && exercise.imageUrl !== failedImage && (
+              <img src={exercise.imageUrl} alt={exercise.name ? `${exercise.name}配图` : '句子配图'} className="max-h-32 object-contain" onError={() => setFailedImage(exercise.imageUrl || '')} />
+            )}
+          </div>
         </div>
       </div>
 
