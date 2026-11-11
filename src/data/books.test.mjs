@@ -2,21 +2,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getBooks } from './books.ts';
 
-test('legacy exercises are isolated into imported and everyday books', () => {
-  const rows = [{ id: 'book-p009-01', unitId: 'page-9' }, { id: 'u1-1', unitId: 'unit-1' }, { id: 'book-p010-01', unitId: 'page-10' }];
-  const books = getBooks(rows);
-  assert.deepEqual(books.map(book => book.exercises.map(ex => ex.id)), [['book-p009-01', 'book-p010-01'], ['u1-1']]);
-  assert.equal(new Set(books.flatMap(book => book.exercises)).size, rows.length);
+const catalogBook = (id, name) => ({ id, name, description: '服务器描述', thumbnail: '/cover.png', chapterCount: 1 });
+
+test('library uses server books and retains empty books and chapters', () => {
+  const catalog = {
+    books: [catalogBook('a', '后台教材'), catalogBook('empty', '尚未添加句子的教材')],
+    chapters: [{ id: 'chapter', bookId: 'empty', name: '空章节', description: '', icon: '✈️', sentenceCount: 0 }],
+    exercises: [{ id: 'book-legacy-prefix', bookId: 'a', unitId: 'other' }],
+  };
+  const books = getBooks(catalog);
+  assert.equal(books.length, 2);
+  assert.equal(books[0].title, '后台教材');
+  assert.equal(books[0].description, '服务器描述');
+  assert.equal(books[0].thumbnail, '/cover.png');
+  assert.equal(books[0].level, undefined);
+  assert.deepEqual(books[0].exercises.map(ex => ex.id), ['book-legacy-prefix']);
+  assert.equal(books[1].chapters[0].icon, '✈️');
+  assert.deepEqual(books[1].exercises, []);
 });
 
-test('explicit book metadata supports independent books with shared units', () => {
-  const books = getBooks([
-    { id: 'one', unitId: 'unit-1', bookId: 'a', bookTitle: '教材 A', bookLevel: 'B1' },
-    { id: 'two', unitId: 'unit-1', bookId: 'b', bookTitle: '教材 B', bookLevel: 'A2' },
-  ]);
-  assert.equal(books.length, 2);
-  assert.equal(books[0].title, '教材 A');
-  assert.equal(books[0].level, 'B1');
-  assert.deepEqual(books[1].exercises.map(ex => ex.id), ['two']);
-  assert.deepEqual(getBooks([]), []);
+test('unassigned exercises never fabricate books or cross book boundaries', () => {
+  const books = getBooks({
+    books: [catalogBook('a', '教材 A'), catalogBook('b', '教材 B')],
+    chapters: [],
+    exercises: [{ id: 'one', bookId: 'b' }, { id: 'u1-1' }, { id: 'book-p009-01' }],
+  });
+  assert.deepEqual(books[0].exercises, []);
+  assert.deepEqual(books[1].exercises.map(ex => ex.id), ['one']);
+  assert.deepEqual(getBooks({ books: [], chapters: [], exercises: [] }), []);
 });

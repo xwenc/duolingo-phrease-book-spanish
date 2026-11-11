@@ -14,7 +14,7 @@ export function ResetPracticeModal({ busy, onClose, onReset }: Props) {
       finally { setPassword(''); }
     }}>
       <h2 id="reset-title" className="text-xl font-bold text-red-600">清空全库练习数据</h2>
-      <p>将清空所有账号的答题记录、难点、经验、宝石和连胜，红心恢复为5，并用最新题库重新开始。账号和密码保留，其他设备需重新登录。</p>
+      <p>将清空所有账号的答题记录、难点、经验、宝石和连胜，红心恢复为5，清空全部书籍、章节和句子，并用示例书籍重新开始。账号和密码保留，其他设备需重新登录。</p>
       <p className="text-red-600 font-bold">此操作不可撤销。</p>
       <label className="block">管理员密码<input type="password" required minLength={12} maxLength={128} autoComplete="current-password" value={password} disabled={busy} onChange={e => setPassword(e.target.value)} className="border rounded p-2 w-full" /></label>
       <label className="flex gap-2 items-start"><input type="checkbox" checked={confirmed} disabled={busy} onChange={e => setConfirmed(e.target.checked)} />我确认清空所有账号的练习数据并重建题库</label>

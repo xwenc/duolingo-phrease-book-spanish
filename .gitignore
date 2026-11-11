@@ -6,6 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+!.env.development.local.example
 
 .venv/
 __pycache__/
@@ -16,3 +17,4 @@ __pycache__/
 
 sources/
 docling_output/
+backend/uploads/

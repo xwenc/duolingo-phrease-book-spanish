@@ -4,50 +4,30 @@
  */
 
 import React from 'react';
-import { X, Layers, CheckCircle2, MessageSquare, Utensils, Compass, ShoppingBag, Hotel, ShieldAlert } from 'lucide-react';
-import { Exercise } from '../types';
+import { X, Layers, CheckCircle2 } from 'lucide-react';
+import type { CatalogChapter } from '../services/api';
 import { soundEffects } from '../services/soundEffects';
 
 interface UnitSelectorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  exercises: Exercise[];
+  chapters: CatalogChapter[];
   selectedUnitId: string | 'all';
   onSelectUnit: (unitId: string | 'all') => void;
 }
 
-const UNIT_ICONS: Record<string, React.ReactNode> = {
-  'unit-1': <MessageSquare className="w-5 h-5 text-emerald-500" />,
-  'unit-2': <Utensils className="w-5 h-5 text-amber-500" />,
-  'unit-3': <Compass className="w-5 h-5 text-sky-500" />,
-  'unit-4': <ShoppingBag className="w-5 h-5 text-indigo-500" />,
-  'unit-5': <Hotel className="w-5 h-5 text-purple-500" />,
-  'unit-6': <ShieldAlert className="w-5 h-5 text-rose-500" />,
-};
-
 export const UnitSelectorModal: React.FC<UnitSelectorModalProps> = ({
   isOpen,
   onClose,
-  exercises,
+  chapters,
   selectedUnitId,
   onSelectUnit,
 }) => {
   if (!isOpen) return null;
-  console.log("exercises", exercises);
-  // Extract unique units
-  const unitsMap = new Map<string, { name: string; count: number }>();
-  exercises.forEach((ex) => {
-    if (!unitsMap.has(ex.unitId)) {
-      unitsMap.set(ex.unitId, { name: ex.unitName, count: 0 });
-    }
-    unitsMap.get(ex.unitId)!.count++;
-  });
-
-  const unitsList = Array.from(unitsMap.entries()).map(([id, data]) => ({
-    id,
-    name: data.name,
-    count: data.count,
+  const unitsList = chapters.map(chapter => ({
+    id: chapter.id, name: chapter.name, count: chapter.sentenceCount, icon: chapter.icon,
   }));
+  const totalQuestions = chapters.reduce((total, chapter) => total + chapter.sentenceCount, 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
@@ -103,7 +83,7 @@ export const UnitSelectorModal: React.FC<UnitSelectorModalProps> = ({
                   全部单元综合口语练习
                 </h4>
                 <p className="text-xs text-slate-500 font-bold">
-                  包含 6 大实用主题，共 {exercises.length} 道精选原声发音句
+                  包含 {unitsList.length} 个主题，共 {totalQuestions} 道精选原声发音句
                 </p>
               </div>
             </div>
@@ -119,12 +99,13 @@ export const UnitSelectorModal: React.FC<UnitSelectorModalProps> = ({
             return (
               <button
                 key={unit.id}
+                disabled={unit.count === 0}
                 onClick={() => {
                   soundEffects.playClickSound();
                   onSelectUnit(unit.id);
                   onClose();
                 }}
-                className={`w-full p-3.5 rounded-2xl border-2 text-left flex items-center justify-between transition-all cursor-pointer ${
+                className={`w-full p-3.5 rounded-2xl border-2 text-left flex items-center justify-between transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                   isSelected
                     ? 'border-[#1cb0f6] bg-[#f0f9ff] shadow-xs'
                     : 'border-slate-200 bg-white hover:bg-slate-50'
@@ -132,14 +113,14 @@ export const UnitSelectorModal: React.FC<UnitSelectorModalProps> = ({
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
-                    {UNIT_ICONS[unit.id] || <Layers className="w-5 h-5 text-slate-600" />}
+                    {unit.icon ? <span className="text-xl">{unit.icon}</span> : <Layers className="w-5 h-5 text-slate-600" />}
                   </div>
                   <div>
                     <h4 className="font-black text-slate-800 text-sm sm:text-base">
                       {unit.name}
                     </h4>
                     <p className="text-xs text-slate-500 font-bold">
-                      {unit.count} 句核心地道口语
+                      {unit.count ? `${unit.count} 句核心地道口语` : '暂无句子'}
                     </p>
                   </div>
                 </div>

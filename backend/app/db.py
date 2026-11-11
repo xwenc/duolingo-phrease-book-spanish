@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from sqlalchemy import create_engine, String, Integer, JSON, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import create_engine, String, Text, Integer, JSON, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 database_url = os.environ['DATABASE_URL']
@@ -26,10 +26,24 @@ class LoginSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
     expires: Mapped[datetime] = mapped_column(DateTime)
+class Book(Base):
+    __tablename__ = 'books'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default='')
+    thumbnail: Mapped[str] = mapped_column(String(2048), default='')
+class Chapter(Base):
+    __tablename__ = 'chapters'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    book_id: Mapped[str] = mapped_column(ForeignKey('books.id'), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default='')
+    icon: Mapped[str] = mapped_column(String(32), default='📖')
 class Exercise(Base):
     __tablename__ = 'exercises'
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     data: Mapped[dict] = mapped_column(JSON)
+    chapter_id: Mapped[str | None] = mapped_column(ForeignKey('chapters.id'), nullable=True, index=True)
 class Star(Base):
     __tablename__ = 'stars'
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), primary_key=True)

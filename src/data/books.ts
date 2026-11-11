@@ -1,9 +1,13 @@
 import type { Exercise, EvaluationResult } from '../types';
+import type { CatalogChapter, LearningCatalog } from '../services/api';
 
 export interface Book {
   id: string;
   title: string;
-  level: string;
+  description?: string;
+  thumbnail?: string;
+  level?: string;
+  chapters: CatalogChapter[];
   color: string;
   exercises: Exercise[];
 }
@@ -23,20 +27,17 @@ export interface BookProgress {
 }
 export type BooksProgressMap = Record<string, BookProgress>;
 
-export function getBooks(exercises: Exercise[]): Book[] {
-  const books = new Map<string, Book>();
+/** Adapt the server catalog for display; never infer book identity from exercise IDs. */
+export function getBooks(catalog: LearningCatalog): Book[] {
   const colors = ['#1cb0f6', '#ce82ff', '#ff9600', '#58cc02'];
-  for (const exercise of exercises) {
-    const imported = exercise.id.startsWith('book-');
-    const id = exercise.bookId || (imported ? 'textbook' : 'everyday');
-    if (!books.has(id)) books.set(id, {
-      id,
-      title: exercise.bookTitle || (imported ? '西班牙语教材 · 基础用语' : '西班牙语 · 日常口语'),
-      level: exercise.bookLevel || (imported ? 'A1' : 'A1–A2'),
-      color: colors[books.size % colors.length],
-      exercises: [],
-    });
-    books.get(id)!.exercises.push(exercise);
-  }
-  return [...books.values()];
+  return catalog.books.map((book, index) => ({
+    id: book.id,
+    title: book.name,
+    description: book.description,
+    thumbnail: book.thumbnail,
+    level: book.level,
+    color: colors[index % colors.length],
+    chapters: catalog.chapters.filter(chapter => chapter.bookId === book.id),
+    exercises: catalog.exercises.filter(exercise => exercise.bookId === book.id),
+  }));
 }

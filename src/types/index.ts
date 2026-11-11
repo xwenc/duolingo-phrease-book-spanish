@@ -12,6 +12,10 @@ export interface Exercise {
   bookId?: string;
   bookTitle?: string;
   bookLevel?: string;
+  bookDescription?: string;
+  bookThumbnail?: string;
+  name?: string;
+  unitIcon?: string;
   id: string;
   unitId: string;
   unitName: string;

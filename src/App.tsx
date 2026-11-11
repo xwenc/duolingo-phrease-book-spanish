@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { api, submitAttempt, type Stats } from './services/api';
+import { api, submitAttempt, fetchCatalog, type LearningCatalog, type Stats } from './services/api';
 import { AuthGate } from './components/AuthGate';
 import { ResetPracticeModal } from './components/ResetPracticeModal';
 import { Exercise, EvaluationResult } from './types';
@@ -23,9 +23,11 @@ import { OwlMood } from './components/DuoOwl';
 
 import { getBooks, type BooksProgressMap, type BookProgress } from './data/books';
 import { BooksLibrary } from './components/BooksLibrary';
+import { AdminDashboard } from './components/AdminDashboard';
 
 export default function App() {
-  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [catalog, setCatalog] = useState<LearningCatalog>({ books: [], chapters: [], exercises: [] });
+  const exercises = catalog.exercises;
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -49,7 +51,7 @@ export default function App() {
     try {
       const stats = await api<Stats>('/me');
       setAuthenticated(true); applyStats(stats);
-      setExercises(await api<Exercise[]>('/exercises'));
+      setCatalog(await fetchCatalog());
     } catch (err) { setError((err as Error).message); }
     finally { setLoading(false); }
   };
@@ -76,11 +78,12 @@ export default function App() {
   const [isHeartRestockOpen, setIsHeartRestockOpen] = useState<boolean>(false);
   const [isUnitSelectorOpen, setIsUnitSelectorOpen] = useState<boolean>(false);
 
-  const [currentView, setCurrentView] = useState<'books' | 'practice'>('books');
+  const [currentView, setCurrentView] = useState<'books' | 'practice' | 'admin'>('books');
   const [currentBookId, setCurrentBookId] = useState('');
   const [booksProgress, setBooksProgress] = useState<BooksProgressMap>({});
-  const books = useMemo(() => getBooks(exercises), [exercises]);
-  const bookExercises = books.find(book => book.id === currentBookId)?.exercises || [];
+  const books = useMemo(() => getBooks(catalog), [catalog]);
+  const currentBook = books.find(book => book.id === currentBookId);
+  const bookExercises = currentBook?.exercises || [];
   const snapshot = (): BookProgress => ({ selectedUnitId, isStarredMode, currentIndex,
     currentTranscript, status, evaluationResult, attemptId, isCompleted,
     sessionCorrectCount, sessionXpGained, sessionGemsGained,
@@ -93,6 +96,7 @@ export default function App() {
     setCurrentView('books');
   };
   const selectBook = (id: string) => {
+    if (!books.find(book => book.id === id)?.exercises.length) return;
     TTSService.stop(); sttService.cancel();
     const saved = booksProgress[id];
     setCurrentBookId(id);
@@ -230,7 +234,7 @@ export default function App() {
       const result = await api<{ stats: Stats; exercises: Exercise[] }>('/admin/reset-practice', {
         method: 'POST', body: JSON.stringify({ password, confirmed: true }),
       });
-      applyStats(result.stats); setExercises(result.exercises);
+      applyStats(result.stats); setCatalog(await fetchCatalog());
       setBooksProgress({}); setCurrentBookId(''); setCurrentView('books');
       setSelectedUnitId('all'); setIsStarredMode(false); handleRestart();
       setIsDifficultiesModalOpen(false); setIsHeartRestockOpen(false); setIsUnitSelectorOpen(false);
@@ -255,17 +259,22 @@ export default function App() {
 
   if (loading) return <p className="p-8">正在加载…</p>;
   if (!authenticated) return <AuthGate onAuthenticated={() => { void load(); }} />;
-  if (!exercises.length) return <div className="p-8"><p>{error || '题库为空，请先导入题库。'}</p><button onClick={() => void load()}>重新加载</button></div>;
+
 
   return (
     <div className="min-h-screen bg-[#f7f7f7] text-[#4b4b4b] flex flex-col font-['Nunito',sans-serif]">
       <div className="px-4 pt-2 flex justify-between text-sm"><span>经验值 {xp}</span><button disabled={busy} onClick={async () => { try { await api('/logout', { method: 'POST' }); setAuthenticated(false); setBooksProgress({}); setCurrentBookId(''); setCurrentView('books'); handleRestart(); } catch (err) { setError((err as Error).message); } }}>退出登录</button></div>
-      {canResetData && <div className="px-4 text-right"><button disabled={busy} className="text-xs text-red-600 underline" onClick={() => { TTSService.stop(); sttService.cancel(); setResetOpen(true); }}>清空练习数据</button></div>}
+      {canResetData && <div className="px-4 flex justify-end gap-4"><button disabled={busy || currentView === 'admin'} className="text-sm font-bold text-sky-600 hover:underline disabled:opacity-50" onClick={() => { if (currentView === 'practice') openBooks(); TTSService.stop(); sttService.cancel(); setCurrentView('admin'); }}>管理后台</button><button disabled={busy} className="text-xs text-red-600 underline" onClick={() => { TTSService.stop(); sttService.cancel(); setResetOpen(true); }}>清空练习数据</button></div>}
       {resetOpen && <ResetPracticeModal busy={busy} onClose={() => setResetOpen(false)} onReset={handleResetData} />}
       {notice && <p role="status" className="px-4 text-green-700">{notice}</p>}
       {error && <p role="alert" className="p-3 text-red-600">{error}</p>}
       {busy && <div role="status" className="fixed inset-0 z-[100] bg-white/60 flex items-center justify-center" aria-live="polite">正在保存…</div>}
-      {currentView === 'books' ? <BooksLibrary books={books} progress={booksProgress} currentBookId={currentBookId} starredIds={starredIds} onSelectBook={selectBook} /> : <>
+      {currentView === 'admin' && canResetData ? <AdminDashboard onExit={async changed => {
+        const [nextCatalog, stats] = await Promise.all([fetchCatalog(), api<Stats>('/me')]);
+        setCatalog(nextCatalog); applyStats(stats);
+        if (changed) { setBooksProgress({}); setCurrentBookId(''); setSelectedUnitId('all'); setIsStarredMode(false); handleRestart(); }
+        setCurrentView('books');
+      }} /> : currentView === 'books' ? <BooksLibrary books={books} progress={booksProgress} currentBookId={currentBookId} starredIds={starredIds} onSelectBook={selectBook} /> : <>
       {/* Duolingo Sticky Top Header */}
       <Header
         currentIndex={currentIndex}
@@ -376,7 +385,7 @@ export default function App() {
       <UnitSelectorModal
         isOpen={isUnitSelectorOpen}
         onClose={() => setIsUnitSelectorOpen(false)}
-        exercises={bookExercises}
+        chapters={currentBook?.chapters || []}
         selectedUnitId={selectedUnitId}
         onSelectUnit={handleSelectUnit}
       />

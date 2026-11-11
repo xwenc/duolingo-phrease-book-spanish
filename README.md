@@ -6,6 +6,7 @@
 
 ## 功能
 
+- **管理员教材后台**：书籍 → 章节 → 句子三级管理，响应式面包屑、封面和章节 Emoji、生词卡片动态增删，内容保存在数据库并直接用于练习。
 - **中文练习界面**：按单元选择题目，查看中文释义、拼读提示、语法说明和词汇提示。
 - **西语示范朗读**：支持正常速度、0.6 倍慢速及单词试听，统一使用 Ming 3.0 TTS 0.5B 西语音色。
 - **录音过程转写**：浏览器通过 AudioWorklet 连续采集声音，定期上传完整 WAV 快照，录音中更新识别文本，结束后补全最终结果。
@@ -138,7 +139,8 @@ docker compose down
 | `APP_ORIGIN` | `http://localhost:3000`，校验写请求来源 |
 | `COOKIE_SECURE` | 示例配置为 `false`；HTTPS 部署应设为 `true` |
 | `SPEECH_URL` | Compose 默认 `http://host.docker.internal:8001`；宿主机直接运行 API 时默认 `http://127.0.0.1:8001` |
-| `RESET_ADMIN_EMAIL` | 默认留空；指定后允许该账户重新验证密码并重置全库练习数据 |
+| `ADMIN_EMAIL` | 管理员登录邮箱；API 启动时自动创建，拥有清空练习数据权限 |
+| `ADMIN_PASSWORD` | 管理员密码，12–128 位；仅保存在服务端环境变量，数据库保存哈希 |
 
 ### 原生语音服务：启动环境变量
 
@@ -177,18 +179,18 @@ npm run dev
 uv venv --python 3.12 backend/.venv
 uv pip install --python backend/.venv/bin/python -r backend/requirements.txt
 
-cd backend
-export DATABASE_URL='mysql+pymysql://spanish:YOUR_PASSWORD@127.0.0.1:3306/spanish?charset=utf8mb4'
-export APP_ORIGIN='http://localhost:3000'
-export COOKIE_SECURE=false
-export SPEECH_URL='http://127.0.0.1:8001'
-
-.venv/bin/alembic upgrade head
-.venv/bin/python -m app.seed
-.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+cp .env.development.local.example .env.development.local
+# 编辑 .env.development.local，填写本地数据库和管理员凭据。
+npm run dev:backend:migrate  # 单独执行迁移（启动命令也会自动执行）
+# npm run dev:backend:seed   # 可选：首次需要示例题库时手动执行
+npm run dev:backend
 ```
 
-示例数据库地址要求本机已有 MySQL 监听 3306。数据库凭据只用于服务端配置，不放入前端环境变量。
+开发后端配置保存在项目根目录 `.env.development.local`，由 `backend/dev.py` 在启动、迁移和 seed 前统一加载；也可直接运行 `backend/.venv/bin/python backend/dev.py [serve|migrate|seed]`，不受当前工作目录影响。已有进程环境变量优先于文件配置。修改配置后重启后端生效。
+
+文件包含 `DATABASE_URL`、`APP_ORIGIN`、`COOKIE_SECURE`、`SPEECH_URL`、`ADMIN_EMAIL`、`ADMIN_PASSWORD`、`BACKEND_HOST` 和 `BACKEND_PORT`。默认监听 `127.0.0.1:8000` 并开启代码热重载，匹配 Vite 的代理配置。使用其他后端端口时需同步调整 Vite 代理。
+
+示例数据库地址要求本机已有 MySQL 监听 3306。`.env.development.local` 已被 Git 忽略；只有无真实凭据的 `.env.development.local.example` 提交到仓库。后端变量不使用 `VITE_` 前缀，不会暴露给前端；Docker Compose 仍读取 `.env`。
 
 ## 测试与验证
 
@@ -235,15 +237,16 @@ speech/.venv/bin/python scripts/smoke_test.py --audio /absolute/path/to/spanish.
 │   │   ├── pcm-recorder.worklet.js   # 连续音频采集
 │   │   ├── pcmAudio.ts              # PCM 重采样与 WAV 编码
 │   │   └── soundEffects.ts          # 浏览器音效
-│   └── data/spanishExercises.ts     # 原静态题库源文件
+│   └── data/books.ts                # 后端目录展示适配与分书练习状态类型
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                  # 认证、题库、答题和语音代理接口
 │   │   ├── db.py                    # 数据模型与数据库连接
 │   │   ├── speech.py                # 原生语音服务 HTTP 桥接
 │   │   ├── scoring.py               # 服务端逐词对齐与评分
-│   │   ├── exercises.json           # 版本化题库种子
-│   │   ├── seed.py                  # 题库校验与幂等同步
+│   │   ├── book.json                # 与后台导出格式一致的示例书籍种子
+│   │   ├── book_format.py           # 后台导入与 seed 共用的格式校验
+│   │   ├── seed.py                  # 导出格式书籍的校验与幂等同步
 │   │   └── reset.py                 # 管理员全库练习重置
 │   ├── migrations/                  # Alembic 数据库迁移
 │   ├── tests/
@@ -264,15 +267,67 @@ speech/.venv/bin/python scripts/smoke_test.py --audio /absolute/path/to/spanish.
 
 ## 题库与数据维护
 
-当前版本化题库包含 **41 道题、7 个单元**，涵盖问候、餐厅、旅行、购物、酒店、应急及教材练习。每道题包含西语、中文、拼读提示、词汇提示和难度等信息。
+默认 seed 文件为 `backend/app/book.json`，采用后台“一键导出”的 `habla-espanol-book` 版本 1 格式。示例包含一本书、6 个章节、23 个句子；不含封面图片或地址。运行时教材仍从数据库经 `/api/catalog` 获取。
 
-运行时题库来自 MySQL，经 `/api/exercises` 获取。修改 `backend/app/exercises.json` 后，重新构建并运行初始化任务：
+开发环境初始化（在项目根目录执行，自动读取 `.env.development.local`）：
+
+```sh
+npm run dev:backend:migrate
+npm run dev:backend:seed
+# 指定其他后台导出的书籍文件：
+npm run dev:backend:seed -- --file ./path/to/exported-book.json
+```
+
+直接运行 Python（须已设置数据库环境变量）：
+
+```sh
+cd backend
+.venv/bin/python -m app.seed                  # 默认 app/book.json
+.venv/bin/python -m app.seed --file /absolute/path/book.json
+```
+
+Docker 初始化默认导入镜像中的 `app/book.json`；修改示例文件后重新构建初始化服务：
 
 ```sh
 docker compose --profile setup run --build --rm init
 ```
 
-普通种子同步按 ID 插入或更新题目，保留账户和练习记录，不删除额外题目。数据库结构由 Alembic 迁移管理，更新前应备份数据。管理员全库重置是独立操作，会清空所有账户的练习记录、收藏和成长数据，并重建题库。
+格式示例（完整字段见 `backend/app/book.json`）：
+
+```json
+{
+  "format": "habla-espanol-book",
+  "version": 1,
+  "book": {
+    "id": "example-book",
+    "name": "示例教材",
+    "description": "入门练习",
+    "chapters": [{
+      "id": "example-chapter",
+      "name": "问候",
+      "description": "日常问候",
+      "icon": "👋",
+      "sentences": [{
+        "id": "example-sentence",
+        "chapterId": "example-chapter",
+        "name": "你好",
+        "spanish": "¡Hola!",
+        "chinese": "你好！",
+        "phonetics": "o-la",
+        "grammarTip": "Hola 用于打招呼。",
+        "difficulty": "easy",
+        "vocabHints": [{"es": "Hola", "chinese": "你好"}]
+      }]
+    }]
+  }
+}
+```
+
+`exportedAt` 可选，忽略其时间值。seed 与后台导入共用完整校验，拒绝格式/版本错误、重复章节或句子 ID、错配的 `chapterId`；最多 5 MB、1000 个章节和 10000 个句子。校验后在单个事务中保存，失败整体回滚。
+
+seed 按导出文件中的 ID 插入或更新书籍、章节和句子，重复执行不会创建副本；保留账户、收藏、答题记录及文件之外的教材内容。已有封面保留，新书封面留空。ID 与其他书籍内容冲突时拒绝导入。建议保留导出 ID；缺少 ID 时按书名和章节/句子位置生成稳定 ID，此时修改书名或调整顺序会改变对应 ID。
+
+后台“一键导入”仍会重新分配 ID 并创建独立副本，与 seed 的幂等同步不同。管理员全库重置是独立的破坏性操作：保留账户与密码，清空全库书籍、章节、句子及所有账户的练习记录、收藏和成长数据，再以 `book.json` 重建示例教材。数据库结构由 Alembic 管理，更新前应备份数据库和封面文件。
 
 ## 部署说明
 
@@ -285,3 +340,42 @@ docker compose --profile setup run --build --rm init
 完整部署、迁移和上线前检查见 [DEPLOYMENT.md](DEPLOYMENT.md)。第三方模型与音频依赖的许可见 [speech/THIRD_PARTY.md](speech/THIRD_PARTY.md)；重新分发时需遵守各组件的许可要求。
 
 Ming 模型采用 [MIT](https://huggingface.co/mlx-community/Ming-3.0-tts-0.5B-bf16) 许可；代码与其他依赖按各自许可使用。
+
+### 默认管理员
+
+在 Docker 的 `.env` 或本地开发的 `.env.development.local` 中配置 `ADMIN_EMAIL` 和 `ADMIN_PASSWORD`，完成数据库迁移后启动 API，即可使用该邮箱和密码登录，无需手动注册。Docker Compose 要求这两个变量均已配置；本地直接运行 API 时，均不配置则跳过自动创建，仅配置一个或格式不合法会阻止启动。
+
+重复启动保留账户及练习数据。修改 `ADMIN_PASSWORD` 后重启 API 会同步密码并撤销该管理员的旧登录会话。变量不得添加 `VITE_` 前缀或提交到版本库。
+
+### 教材管理后台
+
+使用 `ADMIN_EMAIL` 管理员登录后，点击页面顶部的“管理后台”。可新增、编辑、删除书籍、章节和句子；点击“管理章节”“管理句子”逐级进入，顶部面包屑可返回任一级。书籍支持名称、描述、封面图片地址，章节支持名称、描述、Emoji 图标，句子支持名称、西班牙语、中文、拼读、语法提示及多组生词卡片。后台的词汇字段为 `{ es, chinese }`，练习 API 兼容原有 `{ es, zh }`。
+
+升级已有部署时，先备份数据库，然后执行迁移并重建 API 和 Web：
+
+```bash
+docker compose --profile setup run --build --rm init
+docker compose up -d --build api web
+```
+
+迁移 `0002` 将已有题目归入书籍和章节，保留账户、收藏和答题记录。教材馆和单元选择器统一读取 `/api/catalog`，包含空书籍和空章节；无句子的内容展示为空且不可开始练习。前端不再内置题库、书名、级别或章节图标映射。删除书籍或章节前须清空其下级内容；删除句子同时删除其关联收藏和答题记录，已获得的 XP 和宝石保留。返回教材馆时刷新题库；若本次修改过教材，会重置当前页面缓存的练习位置和判题结果，避免引用已修改或删除的句子。
+
+注意：手动执行 `app.seed` 会使用 `app/book.json` 更新同 ID 的书籍、章节和句子；“清空练习数据”会清空全库教材并用该示例书籍重建。
+
+开发启动命令 `npm run dev:backend` 会先执行 `alembic upgrade head`，迁移成功后再启动 API 和初始化管理员；迁移失败则停止启动。不会自动运行 seed，因此重复启动不会覆盖后台编辑的教材。空数据库启动后可直接登录后台添加教材。
+
+### 本地上传教材封面
+
+在书籍表单中点击“上传本地封面”，可上传 JPG、PNG 或 WebP（最大 5 MB、1600 万像素），上传后自动填入地址并预览，点击“保存”后关联到书籍。也可继续填写外部图片地址。图片经服务端解码、缩放并转为 WebP 后存储，仅管理员可上传，登录用户可读取。
+
+本地默认存储在 `backend/uploads/`，已加入 Git 忽略；可在 `.env.development.local` 中设置绝对路径 `UPLOAD_DIR`。Docker 使用持久卷 `cover_uploads` 保存封面，重建容器不会清空；备份时须同时备份数据库和封面卷。修改依赖后先重新安装 `backend/requirements.txt`，Docker 则重新构建 API。
+
+### 一键导出书籍
+
+在管理后台的书籍卡片点击“一键导出”，下载 UTF-8 JSON 文件。导出包含书籍名称、描述、全部章节（含空章节）、句子、拼读、语法提示、难度及生词数组；不包含封面图片文件或封面地址，也不包含账户、收藏、答题记录。接口为 `GET /api/admin/books/{book_id}/export`，仅管理员可用。导出内容以数据库中已保存的数据为准，文件包含格式名和版本号，便于识别。
+
+### 一键导入书籍
+
+点击管理后台顶部“一键导入”，选择之前导出的 `habla-espanol-book` 版本 1 JSON 文件（UTF-8，最大 5 MB）。导入书籍、章节（保留空章节）、句子、难度、拼读、语法提示和生词，成功后显示章节与句子数量并刷新书籍库。
+
+导入总是创建独立副本并重新分配 ID，不覆盖已有书籍，也不导入图片、收藏或答题记录。整份文件先校验，再在单个事务内保存；校验失败不会留下部分书籍。每本书最多 1000 个章节、10000 个句子。接口为 `POST /api/admin/books/import`（multipart 字段 `file`），仅管理员可用。

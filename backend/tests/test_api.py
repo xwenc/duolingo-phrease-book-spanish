@@ -142,9 +142,9 @@ def test_failed_answers_automatically_star_without_duplicates(client):
 
 def test_global_reset_preserves_accounts_rebuilds_seed_and_revokes_other_sessions(client, monkeypatch):
     from app.db import Star, LoginSession
-    from app.seed import load_exercises
+    from app.seed import load_book
     c, factory = client
-    monkeypatch.setenv('RESET_ADMIN_EMAIL', 'test@example.com')
+    monkeypatch.setenv('ADMIN_EMAIL', 'test@example.com')
     register(c)
     admin_token = c.cookies.get('session')
     body = {'requestId':str(uuid4()), 'exerciseId':'one', 'transcript':'adiós'}
@@ -163,7 +163,7 @@ def test_global_reset_preserves_accounts_rebuilds_seed_and_revokes_other_session
     assert response.json()['stats']['hearts'] == 5
     assert response.json()['stats']['xp'] == 0
     assert response.json()['stats']['starredIds'] == []
-    assert response.json()['exercises'] == load_exercises()
+    assert {row['id'] for row in response.json()['exercises']} == {sentence.id for chapter in load_book().book.chapters for sentence in chapter.sentences}
     with factory() as db:
         assert {u.id:(u.email,u.password) for u in db.scalars(select(User))} == credentials
         assert not list(db.scalars(select(Attempt)))
@@ -178,27 +178,12 @@ def test_global_reset_preserves_accounts_rebuilds_seed_and_revokes_other_session
 
 def test_reset_invalid_seed_keeps_existing_data(client, monkeypatch):
     c, factory = client
-    monkeypatch.setenv('RESET_ADMIN_EMAIL','test@example.com')
+    monkeypatch.setenv('ADMIN_EMAIL','test@example.com')
     register(c)
     c.post('/api/attempts', json={'requestId':str(uuid4()),'exerciseId':'one','transcript':'adiós'})
-    with patch('app.main.load_exercises', side_effect=ValueError('invalid')):
+    with patch('app.main.load_book', side_effect=ValueError('invalid')):
         assert c.post('/api/admin/reset-practice', json={'password':'long-test-password','confirmed':True}).status_code == 503
     assert c.get('/api/me').json()['hearts'] == 4
     with factory() as db:
         assert db.get(Exercise,'one') is not None
         assert len(list(db.scalars(select(Attempt)))) == 1
-
-def test_seed_updates_existing_entries_and_validates_before_writes(client, tmp_path):
-    import json
-    from app.seed import load_exercises, sync_exercises
-    _, factory = client
-    rows = load_exercises()
-    with factory.begin() as db:
-        assert sync_exercises(db,rows)['inserted'] == len(rows)
-    replacement = {**rows[0], 'chinese':'更新后的中文'}
-    with factory.begin() as db:
-        assert sync_exercises(db,[replacement]) == {'inserted':0,'updated':1}
-        assert db.get(Exercise,replacement['id']).data['chinese'] == '更新后的中文'
-    file = tmp_path/'invalid.json'
-    file.write_text(json.dumps([rows[0],rows[0]]))
-    with pytest.raises(ValueError): load_exercises(file)

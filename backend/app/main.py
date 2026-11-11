@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import hashlib
 import os
 import secrets
@@ -11,15 +12,30 @@ from pydantic import BaseModel, Field
 from pwdlib import PasswordHash
 from sqlalchemy import select, delete, text
 from sqlalchemy.exc import IntegrityError
-from .db import get_db, User, LoginSession, Exercise, Star, Attempt
+from .db import SessionLocal, get_db, User, LoginSession, Exercise, Star, Attempt
 from .scoring import evaluate
 from .speech import speech, speech_url
-from .seed import load_exercises
+from .seed import load_book
 from .reset import reset_practice
 
 password_hash = PasswordHash.recommended()
 secure_cookie = os.getenv('COOKIE_SECURE', 'true').lower() == 'true'
-app = FastAPI(title='Spanish Practice API')
+from .auth import current_user, can_reset
+from .catalog import router as catalog_router, learning_router, practice_exercises
+from .admin import admin_credentials, sync_admin
+from .covers import router as covers_router
+
+@asynccontextmanager
+async def lifespan(app):
+    if admin_credentials() is not None:
+        with SessionLocal.begin() as db:
+            sync_admin(db)
+    yield
+
+app = FastAPI(title='Spanish Practice API', lifespan=lifespan)
+app.include_router(catalog_router)
+app.include_router(learning_router)
+app.include_router(covers_router)
 
 @app.middleware('http')
 async def origin_guard(request: Request, call_next):
@@ -31,17 +47,6 @@ async def origin_guard(request: Request, call_next):
     response.headers['Cache-Control'] = 'no-store'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     return response
-
-def current_user(request: Request, db=Depends(get_db)):
-    token = request.cookies.get('session', '')
-    session = db.get(LoginSession, hashlib.sha256(token.encode()).hexdigest())
-    if not session or session.expires < datetime.utcnow():
-        raise HTTPException(401, '请先登录')
-    return db.get(User, session.user_id)
-
-def can_reset(user):
-    email = os.getenv('RESET_ADMIN_EMAIL', '').strip().lower()
-    return bool(email) and user.email.lower() == email
 
 def stats(user, db):
     return dict(hearts=user.hearts, xp=user.xp, gems=user.gems, streak=user.streak, canResetData=can_reset(user),
@@ -84,7 +89,7 @@ def me(user=Depends(current_user), db=Depends(get_db)):
     return stats(user, db)
 @app.get('/api/exercises')
 def exercises(user=Depends(current_user), db=Depends(get_db)):
-    return [row.data for row in db.scalars(select(Exercise).order_by(Exercise.id))]
+    return practice_exercises(db)
 @app.put('/api/stars/{exercise_id}')
 def star(exercise_id: str, enabled: bool, user=Depends(current_user), db=Depends(get_db)):
     db.scalar(select(User).where(User.id == user.id).with_for_update().execution_options(populate_existing=True))
@@ -199,10 +204,10 @@ def reset_all(body: ResetRequest, request: Request, user=Depends(current_user), 
         raise HTTPException(401, '管理员密码错误')
     # Validate the entire source before any destructive writes.
     try:
-        rows = load_exercises()
+        book = load_book()
     except (ValueError, OSError):
         raise HTTPException(503, '题库文件无效，未清空任何数据')
     token_hash = hashlib.sha256(request.cookies.get('session', '').encode()).hexdigest()
-    reset_practice(db, rows, token_hash)
+    reset_practice(db, book, token_hash)
     db.commit()
-    return {'stats': stats(user, db), 'exercises': rows}
+    return {'stats': stats(user, db), 'exercises': practice_exercises(db)}
