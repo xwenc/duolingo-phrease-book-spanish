@@ -345,6 +345,8 @@ seed 按导出文件中的 ID 插入或更新书籍、章节和句子，重复�
 
 Ming 模型采用 [MIT](https://huggingface.co/mlx-community/Ming-3.0-tts-0.5B-bf16) 许可；代码与其他依赖按各自许可使用。
 
+## 功能更新及BUG修复记录
+
 ### 默认管理员
 
 在 Docker 的 `.env` 或本地开发的 `.env.development.local` 中配置 `ADMIN_EMAIL` 和 `ADMIN_PASSWORD`，完成数据库迁移后启动 API，即可使用该邮箱和密码登录，无需手动注册。Docker Compose 要求这两个变量均已配置；本地直接运行 API 时，均不配置则跳过自动创建，仅配置一个或格式不合法会阻止启动。
