@@ -11,3 +11,5 @@ dist
 sources
 docling_output
 .pytest_cache
+
+speech

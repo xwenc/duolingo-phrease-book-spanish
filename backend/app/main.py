@@ -2,7 +2,6 @@ import hashlib
 import os
 import secrets
 import httpx
-from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, date
 from typing import Literal
 from uuid import UUID
@@ -14,17 +13,13 @@ from sqlalchemy import select, delete, text
 from sqlalchemy.exc import IntegrityError
 from .db import get_db, User, LoginSession, Exercise, Star, Attempt
 from .scoring import evaluate
-from .speech import speech
+from .speech import speech, speech_url
 from .seed import load_exercises
 from .reset import reset_practice
 
 password_hash = PasswordHash.recommended()
 secure_cookie = os.getenv('COOKIE_SECURE', 'true').lower() == 'true'
-@asynccontextmanager
-async def lifespan(app):
-    await run_in_threadpool(speech.load)
-    yield
-app = FastAPI(title='Spanish Practice API', lifespan=lifespan)
+app = FastAPI(title='Spanish Practice API')
 
 @app.middleware('http')
 async def origin_guard(request: Request, call_next):
@@ -171,8 +166,7 @@ def refill(user=Depends(current_user), db=Depends(get_db)):
 @app.get('/api/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    if speech.model is None:
-        raise HTTPException(503, '模型尚未加载')
+    speech.check()
     return {'status': 'ok'}
 
 
@@ -183,8 +177,8 @@ def tts_audio(text: str = Query(min_length=1, max_length=500),
     if not text.strip():
         raise HTTPException(422, '朗读内容不能为空')
     try:
-        result = httpx.post(os.getenv('TTS_URL', 'http://tts:8001') + '/synthesize',
-                            json={'text': text, 'speed': speed}, timeout=30)
+        result = httpx.post(speech_url() + '/synthesize',
+                            json={'text': text, 'speed': speed}, timeout=600)
         if result.status_code == 503:
             raise HTTPException(503, '朗读服务忙，请稍后重试', headers={'Retry-After': '2'})
         result.raise_for_status()

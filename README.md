@@ -1,160 +1,287 @@
-# 🦉 多邻国风西班牙语强化口语练习 (HablaEspañol)
+# HablaEspañol · 西班牙语口语练习
 
-一款基于 **React 19 + TypeScript + Vite + Tailwind CSS** 构建的沉浸式多邻国（Duolingo）风格西班牙语口语练习应用。系统配备全中文交互界面、经典红心生命值机制、Web Audio API 原生音效合成、Web Speech API 实时西语语音评测、动态规划逐词发音比对与纠错，以及基于本地持久化的星标难点错题专项攻克库。
+面向中文用户的西班牙语口语练习应用，提供示范朗读、录音转写、逐词比对和难点复习，配合红心、经验值、宝石及连胜记录完成日常训练。
 
----
+项目使用 **React + TypeScript + FastAPI + MySQL**。语音服务在 **macOS 宿主机原生运行**：**mlx-audio / Ming 3.0 TTS 0.5B** 使用 Metal 提供 TTS，**faster-whisper / CTranslate2** 使用 CPU int8 提供 STT。Web、业务 API 和数据库使用 Docker Compose 部署。
 
-## 🌟 核心功能特性
+## 功能
 
-### 1. 全中文界面与多邻国游戏化系统
-- **全中文自然交互**：所有题目解析、引导用语、操作按键（“核对答案”、“继续下一题”、“跳过这题”、“改用键盘输入”）与通关庆祝卡片均采用地道中文。
-- **红心生命值系统（❤️）**：
-  - 满额 5 颗红心，朗读错误或跳过题目时扣除 1 颗，伴随心碎震颤视觉反馈。
-  - 生命值耗尽时自动激活回血弹窗，提供“快速重整旗鼓（+1 ❤️）”与“立即加满生命值（+5 ❤️）”两种恢复模式。
-- **连胜火苗（🔥）与成长收益（💎 / XP）**：
-  - 自动打卡记录累计连胜天数。
-  - 每通过一道口语练习奖励 15 XP 经验值与 2 颗宝石。
-- **立体 3D 拟物触感**：经典多邻国风格厚边框按钮（`border-b-4` 与 `active:translate-y-1`），配备微弹动效与按压触感。
-- **多邻国猫头鹰 Duo 矢量动态情绪**：纯 SVG 矢量绘制，根据练习状态实时切换表情（思考中、专注聆听、答对欢呼、扣心流泪、通关派对庆祝）。
+- **中文练习界面**：按单元选择题目，查看中文释义、拼读提示、语法说明和词汇提示。
+- **西语示范朗读**：支持正常速度、0.6 倍慢速及单词试听，统一使用 Ming 3.0 TTS 0.5B 西语音色。
+- **录音过程转写**：浏览器通过 AudioWorklet 连续采集声音，定期上传完整 WAV 快照，录音中更新识别文本，结束后补全最终结果。
+- **键盘输入**：支持手动输入和西班牙语特殊字符快捷键。
+- **逐词比对**：展示匹配词、识别差异和遗漏词，按转写文本完整度评分，75 分通过。
+- **账户与难点复习**：注册、登录、收藏题目及复习；账户、收藏、答题记录和成长数据保存在 MySQL。
+- **练习奖励**：初始 5 颗红心；每道题首次通过奖励 15 XP 和 2 颗宝石，未通过扣 1 颗红心。可用 10 颗宝石补满，或在最后一次练习 30 分钟后免费补满。
+- **浏览器音效**：使用 Web Audio API 合成操作和答题音效，音效偏好保存在浏览器。
 
-### 2. 纯前端零外部依赖音效引擎 (Web Audio API)
-无需加载任何外部 MP3 音频文件，利用浏览器底层的 Web Audio API 原生合成多邻国经典音效：
-- **答对提示音**：标志性 C5 - E5 - G5 - C6 纯净正弦波四音琶音。
-- **答错提示音**：Db3 - B2 柔和低频三角波滤波双音蜂鸣，温和不刺耳。
-- **扣除红心音**：指数滑音下潜提示。
-- **通关庆祝号角**：五和弦上行大合奏 (Fanfare)。
-- **按键触感音**：短促的清脆高频点击回馈。
-- **静音控制**：支持右上角一键静音/开启，状态自动保存。
+评分基于 faster-whisper 转写文本与标准答案的逐词对齐，忽略大小写、元音重音和标点，保留 `ñ` 与 `n` 的区别，额外识别词也会影响得分。它用于辅助练习，不是音素、韵律或口音准确度测评。
 
-### 3. 实时语音评测与双速原生朗读
-- **语音识别 (STT - Speech-to-Text)**：
-  - 原生接入 Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`)。
-  - 目标语言指定为 `es-ES`（西班牙标准卡斯蒂利亚语）。
-  - 支持 `interimResults` 实时流式转写与录音动态声波柱状动画。
-- **原生语音合成 (TTS - Text-to-Speech)**：
-  - 接入浏览器 `window.speechSynthesis` 原生引擎，自动匹配高品质西语发音人。
-  - **标准原速（1.0x 喇叭）**：感受地道西语的连读与语调。
-  - **乌龟慢速（0.6x 🐢）**：放慢每个音节，清晰展示卷舌音与元音组合。
-- **双模备用输入**：麦克风受限或需要拼写辅助时，可一键切换为“键盘输入模式”，自带 `á, é, í, ó, ú, ñ, ü, ¿, ¡` 虚拟快捷西语重音按键。
+## 技术栈
 
-### 4. 智能文本归一化与逐词比对算法 (Token-level Diff)
-针对西班牙语语音识别特点研发的对齐与评分系统：
-- **Unicode NFD 智能归一化**：自动剔除重音符号（`á, é, í, ó, ú, ü`）、标点符号（`¿, ?, ¡, !`）及大小写差异，防止机械性误判。
-- **动态规划词元对齐 (DP Token Alignment)**：
-  - 🟩 **绿色徽章**：读音精准匹配（点击即可单独发音朗读该单词）。
-  - 🟥 **红色徽章**：发音偏差或读错（清晰标注“读成：[用户发音]”，附带单字标准音试听）。
-  - 🟨 **虚线黄色**：遗漏未读的单词。
-- **容错匹配机制**：结合 Levenshtein 编辑距离算法，对长单词提供微弱音节容差判定。
+| 层级 | 技术与职责 |
+| --- | --- |
+| 前端 | React 19、TypeScript 5、Vite 6 |
+| 界面 | Tailwind CSS 4、Lucide React、自定义 SVG 与 CSS 动画 |
+| 浏览器音频 | AudioWorklet、Web Audio API、HTML Audio；负责录音、音效和播放 |
+| 业务 API | Python 3.12、FastAPI、Uvicorn、Pydantic |
+| 数据与迁移 | MySQL 8.4、SQLAlchemy 2、PyMySQL、Alembic |
+| 登录认证 | Argon2 密码哈希、HttpOnly 会话 Cookie |
+| 原生语音 | mlx-audio 0.6.5、MLX 0.32.4、Ming 3.0 TTS 0.5B；faster-whisper 1.2.1、CTranslate2 4.8.5 |
+| 音频处理 | PyAV 解码与重采样、SoundFile 输出 PCM WAV、PyAV atempo 保留音高变速 |
+| 部署与代理 | Docker Compose、Nginx、Docker Desktop 宿主机网络 |
+| 测试 | pytest、FastAPI TestClient、Node.js test runner |
 
-### 5. 星标错题与针对性强化复习 (⭐ 难点复习)
-- 练习过程中随时点击右上角 **⭐ 标记难点**，题目即刻加入难点错题本。
-- 数据依托浏览器 `localStorage` 实现永久离线保存。
-- 点击顶部“难点复习”按键可展开难点生词笔记本，一键进入“**难点专项攻克模式**”，专注于弱项提升。
-
----
-
-## 📚 内置西班牙语精选题库
-
-题库涵盖 6 大核心日常与旅行场景，共计 30+ 句高频实用西语句式：
-
-| 单元编号 | 单元名称 | 重点句型示例 | 难度 |
-| :--- | :--- | :--- | :--- |
-| **Unit 1** | 基础问候与礼貌 (Saludos) | `¡Hola! Mucho gusto en conocerte.`<br>`Buenos días, ¿cómo estás hoy?` | 初级基础 |
-| **Unit 2** | 餐厅点餐与饮食 (Restaurante) | `Quisiera un café con leche, por favor.`<br>`¿Me trae la cuenta, por favor?` | 初级/进阶 |
-| **Unit 3** | 旅行问路与交通 (Viajes) | `¿Dónde está la estación de metro más cercana?`<br>`Siga todo recto y gire a la derecha.` | 进阶口语 |
-| **Unit 4** | 购物与日常交流 (Compras) | `¿Puedo pagar con tarjeta de crédito?`<br>`¿Tiene una talla más grande de esta camisa?` | 初级/进阶 |
-| **Unit 5** | 酒店入住与服务 (Hotel) | `Tengo una reserva a nombre de Carlos.`<br>`¿A qué hora se sirve el desayuno mañana?` | 进阶口语 |
-| **Unit 6** | 应急求助与健康 (Emergencias) | `¿Puede ayudarme? He perdido mi pasaporte.`<br>`Me duele mucho la cabeza y tengo fiebre.` | 高阶地道 |
-
-每道题目均提供：
-- 🗣️ **发音拼读指引**：如 `[ki-sye-ra un ka-fe kon le-che]`
-- 💡 **西语地道用法与语法小贴士**：如虚拟式委婉表达、自复动词用法、阴阳性单复数一致性
-- 🔍 **生词速查卡**：点击关键词即弹词义并单独发音朗读
-
----
-
-## 🛠️ 技术架构与技术栈
-
-- **前端框架**：React 19 (`react`, `react-dom`)
-- **构建工具**：Vite 8
-- **样式方案**：Tailwind CSS 4 (`@tailwindcss/vite`，纯类名 + 3D 拟物立体按键工具层)
-- **图标系统**：Lucide React (`lucide-react`)
-- **语音识别**：Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`)
-- **语音合成**：SpeechSynthesis API (`window.speechSynthesis`)
-- **音效合成**：Web Audio API (`AudioContext`, `OscillatorNode`, `BiquadFilterNode`, `GainNode`)
-- **数据持久化**：浏览器 `localStorage`
-
----
-
-## 📁 项目目录结构
+## 运行架构
 
 ```text
-├── index.html                  # 页面入口文件（配置 Nunito 字体与西班牙语语言属性）
-├── metadata.json               # AI Studio 应用元数据及权限配置
-├── package.json                # 项目依赖定义
-├── tsconfig.json               # TypeScript 编译配置
-├── vite.config.ts              # Vite 构建配置
-└── src/
-    ├── main.tsx                # 应用启动入口
-    ├── App.tsx                 # 核心状态中枢与主流程控制
-    ├── index.css               # 全局样式与多邻国 3D 拟物按钮工具类
-    ├── types/
-    │   └── index.ts            # 题目、评估结果、Diff 词元与用户数据类型定义
-    ├── services/
-    │   ├── soundEffects.ts     # Web Audio API 原生音效合成引擎
-    │   └── speechService.ts    # STT 实时语音识别与 TTS 双速朗读服务
-    ├── utils/
-    │   └── diffAlgorithm.ts    # 西语 NFD 归一化与动态规划逐词对齐算法
-    ├── data/
-    │   └── spanishExercises.ts # 6 大单元分级西班牙语口语题库
-    └── components/
-        ├── DuoOwl.tsx          # 多邻国猫头鹰 Duo 矢量动态情绪组件
-        ├── Header.tsx          # 顶部状态栏（进度条、红心、连胜、宝石、难点复习入口）
-        ├── QuestionCard.tsx    # 题目气泡卡片（双速朗读、拼读指引、生词卡、星标收藏）
-        ├── SpeechRecorder.tsx  # 麦克风录音控制面板、声波动画与虚拟西语键盘
-        ├── WordDiffView.tsx    # 逐词对比评测视图（正确/偏差/遗漏标记与单字试听）
-        ├── BottomActionBar.tsx # 底部滑动操作栏（跳过、核对、继续下一题，支持 Enter 键）
-        ├── DifficultiesModal.tsx # 星标难点生词错题管理抽屉
-        ├── HeartRestockModal.tsx # 红心生命值耗尽回血弹窗
-        ├── UnitSelectorModal.tsx # 西语主题训练单元切换器
-        └── CompletionCelebration.tsx # 通关结算与成就结算界面
+浏览器 http://localhost:3000
+  │ 页面、录音、音频播放
+  ▼
+Docker Desktop
+  Nginx / Web ── /api ──► FastAPI ──► MySQL
+                            │
+                            │ http://host.docker.internal:8001
+                            ▼
+macOS 宿主机 · 原生 Python 进程
+  原生语音服务
+    ├── mlx-audio / Ming 3.0 TTS 0.5B / Metal：TTS → 44.1kHz PCM WAV
+    └── faster-whisper / CTranslate2 / CPU int8：STT → 转写文本
 ```
 
----
+Ming bf16 模型文件约 3GB，运行时还需额外内存。慢速朗读通过 PyAV atempo 保留音高变速，复用原速合成结果，避免重复推理。
 
-## 🚀 本地运行与开发
+模型常驻宿主机内存，TTS 与 STT 共用一个推理锁，繁忙时返回 HTTP 503；合成音频使用最多 8MB 的内存缓存。浏览器通过已登录的同源 API 访问语音功能。
+
+录音支持 WAV、WebM、MP4 和 Ogg，单次上传最多 8MB、音频最长 60 秒，浏览器录音在 55 秒自动结束。录音解码与推理在内存中完成；转写文本作为答题记录保存在数据库。
+
+## 快速启动
 
 ### 环境要求
-- Node.js >= 18.0.0
-- 支持 Web Speech API 的现代浏览器（推荐 Google Chrome, Microsoft Edge）
 
-### 安装与启动
-```bash
-# 安装项目依赖
-npm install
+- Apple Silicon Mac，原生 arm64 macOS，可使用 Metal。
+- Python 3.12 与 [uv](https://docs.astral.sh/uv/)。
+- Docker Desktop 和 Docker Compose v2。
+- 首次安装和下载模型需要网络，模型缓存大小取决于所选模型；运行内存需求取决于模型和设备。
+- 支持麦克风、AudioWorklet 和 Web Audio API 的现代浏览器。录音需要 `localhost` 或 HTTPS 安全上下文。
 
-# 启动开发服务器（默认运行在 3000 端口）
-npm run dev
+本地修改前端时还需要 Node.js 22 和 npm；使用 Docker 构建 Web 时无需在宿主机安装 Node.js。
 
-# 编译生产版本
-npm run build
+### 1. 配置业务服务
+
+在项目根目录执行：
+
+```sh
+cp .env.example .env
 ```
 
----
+编辑 `.env`，将 `MYSQL_PASSWORD` 和 `MYSQL_ROOT_PASSWORD` 替换为两组不同的随机十六进制密码。本地 HTTP 使用：
 
-## 💡 键盘快捷键支持
+```dotenv
+APP_ORIGIN=http://localhost:3000
+COOKIE_SECURE=false
+SPEECH_URL=http://host.docker.internal:8001
+```
 
-- **`Enter` 回车键**：
-  - 录入语音或文本后：一键**核对答案**
-  - 回答正确或错误展示后：一键**继续下一题**
-- **点击单词**：在题目卡片或逐词评测中，点击任意西语单词即可触发该词的原声独立发音。
+`.env` 由 Docker Compose 读取，不会自动加载到原生语音启动脚本。
 
----
+### 2. 安装并启动原生语音服务
 
-## 📄 授权许可
-Apache-2.0 License
+```sh
+uv venv --python 3.12 speech/.venv
+uv pip install --python speech/.venv/bin/python -r speech/requirements.txt
+./scripts/start-speech.sh
+```
 
+首次启动会从 Hugging Face 下载 Ming 3.0 TTS 0.5B 和 faster-whisper 模型，默认缓存到 `.local-test/huggingface`（faster-whisper 在其 `faster-whisper` 子目录）。等待出现 `Application startup complete`，并保持该终端运行。
 
-## FastAPI / MySQL / 本地语音引擎重构
+脚本默认监听 `127.0.0.1:8001`，只启动一个 worker。重启 Mac 或结束进程后，需要重新运行启动脚本；项目没有安装开机自启动项。
 
-当前代码已接入账户登录、服务端题库与评分、数据库持久化及 Docker Compose。新架构与启动说明见 [DEPLOYMENT.md](DEPLOYMENT.md)。上文原型的纯前端与 Web Speech Recognition 说明属于历史设计，以新部署文档为准。
+### 3. 启动 Web、API 和数据库
+
+另开终端，在项目根目录执行：
+
+```sh
+curl --fail http://127.0.0.1:8001/health
+
+docker compose up -d mysql
+docker compose --profile setup run --build --rm init
+docker compose up -d --build --remove-orphans api web
+```
+
+打开 [http://localhost:3000](http://localhost:3000)，注册账户并开始练习。密码至少 12 位。`init` 执行数据库迁移并同步题库；API 的健康检查同时验证数据库和原生语音服务是否就绪。
+
+### 4. 检查与停止
+
+```sh
+# 检查应用健康状态
+curl --fail http://localhost:3000/api/health
+
+# 查看容器与业务日志
+docker compose ps
+docker compose logs --tail=100 api web
+
+# 停止容器，保留 MySQL 数据卷
+docker compose down
+```
+
+原生语音服务在其运行终端按 `Ctrl+C` 停止。`docker compose down -v` 会删除数据库卷，不用于日常停止。
+
+## 配置项
+
+### 业务服务：`.env`
+
+| 变量 | 默认值或用途 |
+| --- | --- |
+| `MYSQL_PASSWORD` | 必填，业务数据库密码 |
+| `MYSQL_ROOT_PASSWORD` | 必填，数据库 root 密码 |
+| `APP_ORIGIN` | `http://localhost:3000`，校验写请求来源 |
+| `COOKIE_SECURE` | 示例配置为 `false`；HTTPS 部署应设为 `true` |
+| `SPEECH_URL` | Compose 默认 `http://host.docker.internal:8001`；宿主机直接运行 API 时默认 `http://127.0.0.1:8001` |
+| `RESET_ADMIN_EMAIL` | 默认留空；指定后允许该账户重新验证密码并重置全库练习数据 |
+
+### 原生语音服务：启动环境变量
+
+| 变量 | 默认值 |
+| --- | --- |
+| `TTS_MODEL` | `mlx-community/Ming-3.0-tts-0.5B-bf16` |
+| `TTS_VOICE` | 留空，使用模型默认音色；可设置 `UK_Charlotte` 等内置音色 |
+| `STT_MODEL` | `small` |
+| `SPEECH_HOST` | `127.0.0.1` |
+| `SPEECH_PORT` | `8001` |
+| `HF_HOME` | 项目目录下的 `.local-test/huggingface` |
+| `HF_HUB_DISABLE_XET` | `1`，默认使用普通 HTTP 下载模型 |
+
+例如，指定兼容的本地模型路径：
+
+```sh
+TTS_MODEL=/absolute/path/to/ming \
+STT_MODEL=/absolute/path/to/whisper \
+./scripts/start-speech.sh
+```
+
+当前语音实现按 Ming 3.0 TTS 0.5B 与 faster-whisper 的接口编写，TTS 使用语言代码 `es`，可选 Ming 内置音色，STT 固定 `es`，使用 CPU int8 并启用 VAD。STT 模型应为 faster-whisper 支持的名称或 CTranslate2 格式的本地目录。更换模型时需确认接口兼容。
+
+## 本地开发
+
+前端开发服务器固定在 3000 端口，将 `/api` 代理到宿主机的 `127.0.0.1:8000`：
+
+```sh
+npm ci
+npm run dev
+```
+
+配合宿主机 API 开发时，先启动原生语音服务，并准备可访问的 MySQL 数据库。默认 Compose 不暴露 MySQL 或 API 端口，因此仅执行 `npm run dev` 不会启动完整应用。
+
+```sh
+uv venv --python 3.12 backend/.venv
+uv pip install --python backend/.venv/bin/python -r backend/requirements.txt
+
+cd backend
+export DATABASE_URL='mysql+pymysql://spanish:YOUR_PASSWORD@127.0.0.1:3306/spanish?charset=utf8mb4'
+export APP_ORIGIN='http://localhost:3000'
+export COOKIE_SECURE=false
+export SPEECH_URL='http://127.0.0.1:8001'
+
+.venv/bin/alembic upgrade head
+.venv/bin/python -m app.seed
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+示例数据库地址要求本机已有 MySQL 监听 3306。数据库凭据只用于服务端配置，不放入前端环境变量。
+
+## 测试与验证
+
+以下命令在项目根目录运行：
+
+```sh
+# 前端类型检查、语音行为测试与生产构建
+npm ci
+npm run lint
+npm run test:speech
+npm run build
+
+# 后端接口与原生语音工作进程测试
+uv pip install --python speech/.venv/bin/python -r speech/requirements-dev.txt
+PYTHONPATH=backend speech/.venv/bin/python -m pytest backend/tests speech/tests -q
+```
+
+后端测试使用 SQLite 和替身模型；语音服务测试覆盖真实音频解码、时长限制、静音处理、并发锁和 WAV 缓存。它们不验证 MySQL 行锁或真实模型识别质量。
+
+启动对应服务后，可进一步验证真实链路：
+
+```sh
+# 仅需原生语音服务：Ming 3.0 TTS 0.5B、faster-whisper、慢速与缓存
+speech/.venv/bin/python scripts/native_speech_smoke_test.py
+
+# 需要完整应用：登录后的句子、慢速与单词朗读
+speech/.venv/bin/python scripts/tts_smoke_test.py
+
+# 需要完整应用：MySQL 业务流程、真实转写与评分
+speech/.venv/bin/python scripts/smoke_test.py --audio /absolute/path/to/spanish.wav
+```
+
+后两项会创建独立测试账户。验证记录与部署细节见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+
+## 项目结构
+
+```text
+├── src/
+│   ├── App.tsx                      # 登录状态与练习流程
+│   ├── components/                  # 录音、题目、逐词比对、收藏及账户界面
+│   ├── services/
+│   │   ├── api.ts                   # 业务 API 客户端
+│   │   ├── speechService.ts         # 录音转写与 TTS 播放
+│   │   ├── pcm-recorder.worklet.js   # 连续音频采集
+│   │   ├── pcmAudio.ts              # PCM 重采样与 WAV 编码
+│   │   └── soundEffects.ts          # 浏览器音效
+│   └── data/spanishExercises.ts     # 原静态题库源文件
+├── backend/
+│   ├── app/
+│   │   ├── main.py                  # 认证、题库、答题和语音代理接口
+│   │   ├── db.py                    # 数据模型与数据库连接
+│   │   ├── speech.py                # 原生语音服务 HTTP 桥接
+│   │   ├── scoring.py               # 服务端逐词对齐与评分
+│   │   ├── exercises.json           # 版本化题库种子
+│   │   ├── seed.py                  # 题库校验与幂等同步
+│   │   └── reset.py                 # 管理员全库练习重置
+│   ├── migrations/                  # Alembic 数据库迁移
+│   ├── tests/
+│   └── Dockerfile
+├── speech/
+│   ├── server.py                    # macOS 原生 Ming 3.0 TTS 0.5B / faster-whisper 服务
+│   ├── requirements.txt             # 原生运行依赖
+│   ├── requirements-dev.txt         # 测试依赖
+│   ├── tests/
+│   └── THIRD_PARTY.md               # 模型与第三方许可说明
+├── scripts/                         # 原生启动脚本与真实链路冒烟测试
+├── deploy/nginx.conf                # 同源反向代理及限流
+├── compose.yaml                     # MySQL、初始化任务、API 和 Web
+├── Dockerfile                       # 前端构建及 Nginx 镜像
+├── .env.example                     # 业务环境配置示例
+└── DEPLOYMENT.md                    # 部署、迁移与验证记录
+```
+
+## 题库与数据维护
+
+当前版本化题库包含 **41 道题、7 个单元**，涵盖问候、餐厅、旅行、购物、酒店、应急及教材练习。每道题包含西语、中文、拼读提示、词汇提示和难度等信息。
+
+运行时题库来自 MySQL，经 `/api/exercises` 获取。修改 `backend/app/exercises.json` 后，重新构建并运行初始化任务：
+
+```sh
+docker compose --profile setup run --build --rm init
+```
+
+普通种子同步按 ID 插入或更新题目，保留账户和练习记录，不删除额外题目。数据库结构由 Alembic 迁移管理，更新前应备份数据。管理员全库重置是独立操作，会清空所有账户的练习记录、收藏和成长数据，并重建题库。
+
+## 部署说明
+
+- 默认只将 Web 映射到宿主机 `127.0.0.1:3000`；API 和 MySQL 在 Docker 网络内通信。
+- 原生语音服务没有用户鉴权，默认绑定回环地址；业务鉴权在 FastAPI 完成。
+- 模型首次下载后复用本地缓存；运行期间录音不会发送到第三方语音 API。
+- 远程访问录音功能需要 HTTPS，并配置匹配的 `APP_ORIGIN` 和安全 Cookie。
+- 原生服务重启后，API 健康检查会动态恢复；不要通过增加语音 worker 数量来扩容，以免重复加载模型。
+
+完整部署、迁移和上线前检查见 [DEPLOYMENT.md](DEPLOYMENT.md)。第三方模型与音频依赖的许可见 [speech/THIRD_PARTY.md](speech/THIRD_PARTY.md)；重新分发时需遵守各组件的许可要求。
+
+Ming 模型采用 [MIT](https://huggingface.co/mlx-community/Ming-3.0-tts-0.5B-bf16) 许可；代码与其他依赖按各自许可使用。

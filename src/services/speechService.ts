@@ -6,7 +6,7 @@
 import { api } from './api';
 import { encodeWav } from './pcmAudio';
 
-/** Local Piper synthesis. The browser only plays the returned WAV. */
+/** Native Ming TTS synthesis. The browser only plays the returned WAV. */
 export class TTSService {
   private static audio: HTMLAudioElement | null = null;
   private static autoplayTimer: ReturnType<typeof setTimeout> | undefined;
@@ -62,7 +62,7 @@ export class TTSService {
 }
 
 /**
- * 语音识别 (STT)：AudioWorklet 连续采集，WAV快照交给本地 faster-whisper
+ * 语音识别 (STT)：AudioWorklet 连续采集，WAV快照交给 macOS 原生 faster-whisper
  */
 export interface STTListenerCallbacks {
   onStart?: () => void;

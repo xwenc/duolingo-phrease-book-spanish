@@ -1,11 +1,11 @@
-"""Verify normal, slow and word audio from the real local Piper deployment."""
+"""Verify normal, slow and word audio from the real local Ming 3.0 TTS 0.5B / MLX deployment."""
 import io
 import secrets
 import wave
 from uuid import uuid4
 import httpx
 
-with httpx.Client(base_url='http://localhost:3000', headers={'Origin':'http://localhost:3000'}, timeout=40) as client:
+with httpx.Client(base_url='http://localhost:3000', headers={'Origin':'http://localhost:3000'}, timeout=600) as client:
     response = client.post('/api/auth/register', json={
         'email':f'tts-smoke-{uuid4().hex}@example.invalid', 'password':secrets.token_urlsafe(24)})
     assert response.status_code == 200, response.text
@@ -18,7 +18,7 @@ with httpx.Client(base_url='http://localhost:3000', headers={'Origin':'http://lo
         assert response.headers['content-type'] == 'audio/wav'
         with wave.open(io.BytesIO(response.content)) as wav:
             duration = wav.getnframes() / wav.getframerate()
-            assert wav.getframerate() == 22050
+            assert wav.getframerate() == 44100
             assert duration > 0.1
         durations[label] = duration
         print(f'PASS {label}: {duration:.2f}s, {len(response.content)} bytes')

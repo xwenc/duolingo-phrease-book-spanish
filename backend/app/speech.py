@@ -1,26 +1,30 @@
+"""HTTP bridge to the native macOS MLX worker; no model dependencies in Docker."""
 import os
-import threading
-from io import BytesIO
+import httpx
+from fastapi import HTTPException
+
+
+def speech_url():
+    return os.getenv('SPEECH_URL', 'http://127.0.0.1:8001').rstrip('/')
+
 
 class SpeechEngine:
-    def __init__(self):
-        self.model = None
-        self.lock = threading.Lock()
-    def load(self):
-        from faster_whisper import WhisperModel
-        self.model = WhisperModel(os.getenv('WHISPER_MODEL', '/models/small'), device='cpu', compute_type='int8', local_files_only=True)
-    def transcribe(self, data):
-        if not self.lock.acquire(blocking=False):
-            from fastapi import HTTPException
-            raise HTTPException(503, '语音引擎忙，请稍后重试', headers={'Retry-After': '5'})
+    def check(self):
         try:
-            from faster_whisper.audio import decode_audio
-            audio = decode_audio(BytesIO(data), sampling_rate=16000)
-            if len(audio) > 16000 * 60:
-                from fastapi import HTTPException
-                raise HTTPException(413, '录音最长60秒')
-            segments, _ = self.model.transcribe(audio, language='es', vad_filter=True, condition_on_previous_text=False)
-            return ' '.join(s.text.strip() for s in segments).strip()
-        finally:
-            self.lock.release()
+            httpx.get(speech_url() + '/health', timeout=3).raise_for_status()
+        except httpx.HTTPError:
+            raise HTTPException(503, '本地语音服务尚未就绪')
+
+    def transcribe(self, data):
+        try:
+            result = httpx.post(speech_url() + '/transcribe',
+                                files={'audio': ('recording', data, 'application/octet-stream')}, timeout=120)
+            if result.status_code in (413, 422):
+                raise HTTPException(result.status_code, result.json().get('detail', '无法解析录音'))
+            result.raise_for_status()
+        except httpx.HTTPError:
+            raise HTTPException(503, '本地语音服务暂不可用或繁忙', headers={'Retry-After': '2'})
+        return result.json()['transcript']
+
+
 speech = SpeechEngine()

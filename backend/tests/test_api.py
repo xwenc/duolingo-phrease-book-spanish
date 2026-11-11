@@ -23,9 +23,8 @@ def client():
     app.dependency_overrides[get_db] = override
     with factory.begin() as db:
         db.add(Exercise(id='one', data={'id':'one', 'spanish':'Hola amigo'}))
-    with patch('app.main.speech.load'):
-        with TestClient(app, headers={'Origin': 'http://localhost:3000'}) as c:
-            yield c, factory
+    with TestClient(app, headers={'Origin': 'http://localhost:3000'}) as c:
+        yield c, factory
     app.dependency_overrides.clear()
 
 def register(c, email='test@example.com'):
@@ -112,7 +111,7 @@ def test_local_tts_auth_validation_and_audio(client):
     assert c.get('/api/tts', params={'text':'Hola', 'speed':0.1}).status_code == 422
     assert c.get('/api/tts', params={'text':'x'*501}).status_code == 422
     assert c.get('/api/tts', params={'text':'   '}).status_code == 422
-    with patch('app.main.httpx.post', return_value=httpx.Response(200, content=b'RIFF-test-audio', request=httpx.Request('POST', 'http://tts:8001/synthesize'))) as synth:
+    with patch('app.main.httpx.post', return_value=httpx.Response(200, content=b'RIFF-test-audio', request=httpx.Request('POST', 'http://127.0.0.1:8001/synthesize'))) as synth:
         response = c.get('/api/tts', params={'text':'Hola', 'speed':0.6})
         assert response.status_code == 200
         assert response.headers['content-type'] == 'audio/wav'
