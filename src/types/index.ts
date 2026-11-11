@@ -15,6 +15,7 @@ export interface Exercise {
   bookDescription?: string;
   bookThumbnail?: string;
   name?: string;
+  imageUrl?: string;
   unitIcon?: string;
   id: string;
   unitId: string;

@@ -27,6 +27,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const [playingRate, setPlayingRate] = useState<number | null>(null);
   const [showGrammarTip, setShowGrammarTip] = useState<boolean>(false);
   const [activeHintIndex, setActiveHintIndex] = useState<number | null>(null);
+  const [failedImage, setFailedImage] = useState('');
 
   useEffect(() => {
     TTSService.schedule(exercise.spanish, 1000,
@@ -87,6 +88,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           <span>{isStarred ? '已星标难点' : '标记难点'}</span>
         </button>
       </div>
+
+      {exercise.imageUrl && exercise.imageUrl !== failedImage && (
+        <figure className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white p-2">
+          <img src={exercise.imageUrl} alt={exercise.name ? `${exercise.name}配图` : '句子配图'} className="max-h-64 w-full rounded-xl object-contain" onError={() => setFailedImage(exercise.imageUrl || '')} />
+        </figure>
+      )}
 
       {/* Main Duo Owl & Speech Bubble Container */}
       <div className="flex items-start gap-3 sm:gap-4">

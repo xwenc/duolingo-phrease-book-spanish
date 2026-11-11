@@ -12,7 +12,7 @@ export function BooksLibrary({ books, progress, currentBookId, starredIds, onSel
   return <main className="w-full max-w-4xl mx-auto px-5 py-10">
     <div className="mb-8"><p className="text-[#58a700] font-black mb-2">每天一点，西语更进一步</p><h1 className="text-3xl font-black text-slate-700">我的教材馆</h1><p className="mt-3 text-slate-500">选一本教材，接着上次的进度继续练习。</p></div>
     {!books.length && <p className="rounded-2xl border-2 border-dashed border-slate-200 bg-white p-8 text-slate-500">暂无练习教材，请由管理员添加书籍、章节和句子。</p>}
-    <div className="grid sm:grid-cols-2 gap-6">{books.map(book => {
+    <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6">{books.map(book => {
       const saved = progress[book.id];
       const pool = saved?.isStarredMode ? book.exercises.filter(ex => starredIds.includes(ex.id)) : saved && saved.selectedUnitId !== 'all' ? book.exercises.filter(ex => ex.unitId === saved.selectedUnitId) : book.exercises;
       const percent = saved?.isCompleted ? 100 : Math.min(100, Math.round((saved?.currentIndex || 0) / Math.max(1, pool.length) * 100));

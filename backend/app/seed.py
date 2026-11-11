@@ -69,7 +69,8 @@ def sync_book(db, payload):
                 owner = db.get(Chapter, existing.chapter_id)
                 if owner and owner.book_id != book_id:
                     raise ValueError(f'句子 ID {id} 已属于其他书籍，未导入任何数据')
-            data = {'id': id, **exercise_data(sentence, chapter), 'difficulty': sentence.difficulty}
+            data = {'id': id, **exercise_data(sentence, chapter), 'difficulty': sentence.difficulty,
+                    'imageUrl': existing.data.get('imageUrl', '') if existing else ''}
             upsert(Exercise, id, {'chapter_id': chapter_id, 'data': data}, 'sentences')
     return result
 

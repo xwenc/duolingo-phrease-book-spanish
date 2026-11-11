@@ -4,13 +4,14 @@ import { api, type CatalogBook, type CatalogChapter } from '../services/api';
 
 type AdminBook = CatalogBook;
 type AdminChapter = CatalogChapter;
-interface AdminSentence { id: string; chapterId: string; name: string; spanish: string; chinese: string; phonetics: string; grammarTip: string; vocabHints: { es: string; chinese: string }[] }
+interface AdminSentence { imageUrl?: string; id: string; chapterId: string; name: string; spanish: string; chinese: string; phonetics: string; grammarTip: string; vocabHints: { es: string; chinese: string }[] }
 type Level = 'book' | 'chapter' | 'sentence';
 interface Draft {
   id?: string;
   name: string;
   description: string;
   thumbnail: string;
+  imageUrl: string;
   icon: string;
   spanish: string;
   chinese: string;
@@ -18,7 +19,7 @@ interface Draft {
   grammarTip: string;
   vocabHints: { es: string; chinese: string }[];
 }
-const blank = (): Draft => ({ name: '', description: '', thumbnail: '', icon: '📖', spanish: '', chinese: '', phonetics: '', grammarTip: '', vocabHints: [] });
+const blank = (): Draft => ({ name: '', description: '', thumbnail: '', imageUrl: '', icon: '📖', spanish: '', chinese: '', phonetics: '', grammarTip: '', vocabHints: [] });
 const labels: Record<Level, string> = { book: '书籍', chapter: '章节', sentence: '句子' };
 const emojis = ['📖', '👋', '🍽️', '✈️', '🛍️', '🏨', '🚆', '💬', '🏠', '🌍', '🎓', '❤️', '☀️', '🎯', '🎵', '💼'];
 const inputClass = 'mt-2 block w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 focus:border-[#1cb0f6] focus:outline-none';
@@ -77,7 +78,7 @@ export function AdminDashboard({ onExit }: { onExit: (changed: boolean) => Promi
     });
   };
   const patch = (value: Partial<Draft>) => setDraft(previous => previous ? { ...previous, ...value } : previous);
-  const uploadCover = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadImage = async (event: React.ChangeEvent<HTMLInputElement>, target: 'book' | 'sentence') => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || busy || !draft) return;
@@ -86,15 +87,15 @@ export function AdminDashboard({ onExit }: { onExit: (changed: boolean) => Promi
       setError('仅支持 JPG、PNG 和 WebP 图片'); return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setError('封面图片不能超过 5 MB'); return;
+      setError('图片不能超过 5 MB'); return;
     }
     setUploading(true);
     try {
       const body = new FormData();
       body.append('file', file);
-      const result = await api<{ url: string }>('/admin/covers', { method: 'POST', body });
-      patch({ thumbnail: result.url });
-      setNotice('封面已上传，保存书籍后生效');
+      const result = await api<{ url: string }>(target === 'book' ? '/admin/covers' : '/admin/sentence-images', { method: 'POST', body });
+      patch(target === 'book' ? { thumbnail: result.url } : { imageUrl: result.url });
+      setNotice(target === 'book' ? '封面已上传，保存书籍后生效' : '句子图片已上传，保存句子后生效');
     } catch (err) { setError((err as Error).message); }
     finally { setUploading(false); }
   };
@@ -104,7 +105,7 @@ export function AdminDashboard({ onExit }: { onExit: (changed: boolean) => Promi
     setSaving(true); setError(''); setNotice('');
     const body = level === 'book' ? { name: draft.name, description: draft.description, thumbnail: draft.thumbnail }
       : level === 'chapter' ? { name: draft.name, description: draft.description, icon: draft.icon }
-      : { name: draft.name, spanish: draft.spanish, chinese: draft.chinese, phonetics: draft.phonetics, grammarTip: draft.grammarTip, vocabHints: draft.vocabHints };
+      : { name: draft.name, imageUrl: draft.imageUrl, spanish: draft.spanish, chinese: draft.chinese, phonetics: draft.phonetics, grammarTip: draft.grammarTip, vocabHints: draft.vocabHints };
     const path = draft.id ? `/admin/${level === 'book' ? 'books' : level === 'chapter' ? 'chapters' : 'sentences'}/${draft.id}`
       : level === 'book' ? '/admin/books' : level === 'chapter' ? `/admin/books/${bookId}/chapters` : `/admin/chapters/${chapterId}/sentences`;
     try {
@@ -185,7 +186,7 @@ export function AdminDashboard({ onExit }: { onExit: (changed: boolean) => Promi
         {loading ? <p role="status" className="p-10 text-center text-slate-400">正在加载{labels[level]}…</p> : !items.length ? <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white px-6 py-16 text-center"><BookOpen className="mx-auto text-[#1cb0f6] mb-4" size={40} /><h3 className="font-black text-lg">还没有{labels[level]}</h3><p className="text-sm text-slate-400 mt-2">点击“新增{labels[level]}”，添加第一条内容。</p></div> : <div className={`grid gap-4 ${level === 'book' && !draft ? 'sm:grid-cols-2 xl:grid-cols-3' : ''}`}>
           {items.map(item => <article key={item.id} className="rounded-2xl border-2 border-b-4 border-slate-200 bg-white overflow-hidden">
             {level === 'book' && 'thumbnail' in item && item.thumbnail && <img src={item.thumbnail} alt={`${item.name}封面`} className="h-36 w-full object-cover bg-slate-100" />}
-            <div className="p-5"><div className="flex gap-3 items-start"><div className="shrink-0 flex items-center justify-center rounded-xl bg-sky-50 text-[#1cb0f6] w-11 h-11">{'icon' in item ? <span className="text-2xl">{item.icon}</span> : level === 'sentence' ? <MessageSquare size={23} /> : <BookOpen size={23} />}</div><div className="min-w-0 flex-1"><h3 className="font-black text-slate-700 break-words">{item.name}</h3>{'spanish' in item ? <><p lang="es" className="mt-2 text-sm text-[#1899d6] break-words">{item.spanish}</p><p className="text-sm text-slate-500 mt-1 break-words">{item.chinese}</p><p className="text-xs text-slate-400 mt-2">{item.vocabHints.length} 个生词</p></> : <><p className="mt-1 text-sm text-slate-500 line-clamp-2 break-words">{item.description || '暂无描述'}</p><p className="mt-2 text-xs font-bold text-slate-400">{'chapterCount' in item ? `${item.chapterCount} 个章节` : `${item.sentenceCount} 个句子`}</p></>}</div></div>
+            <div className="p-5"><div className="flex gap-3 items-start"><div className="shrink-0 flex items-center justify-center rounded-xl bg-sky-50 text-[#1cb0f6] w-11 h-11">{'icon' in item ? <span className="text-2xl">{item.icon}</span> : level === 'sentence' ? <MessageSquare size={23} /> : <BookOpen size={23} />}</div><div className="min-w-0 flex-1"><h3 className="font-black text-slate-700 break-words">{item.name}</h3>{'spanish' in item ? <>{item.imageUrl && <img src={item.imageUrl} alt={`${item.name}配图`} className="mt-3 max-h-32 rounded-lg object-contain" />}<p lang="es" className="mt-2 text-sm text-[#1899d6] break-words">{item.spanish}</p><p className="text-sm text-slate-500 mt-1 break-words">{item.chinese}</p><p className="text-xs text-slate-400 mt-2">{item.vocabHints.length} 个生词</p></> : <><p className="mt-1 text-sm text-slate-500 line-clamp-2 break-words">{item.description || '暂无描述'}</p><p className="mt-2 text-xs font-bold text-slate-400">{'chapterCount' in item ? `${item.chapterCount} 个章节` : `${item.sentenceCount} 个句子`}</p></>}</div></div>
               <div className="flex flex-wrap justify-between gap-2 mt-5 pt-4 border-t border-slate-100"><div className="flex flex-wrap gap-2">{level === 'book' && <button type="button" disabled={busy} aria-label={`导出${item.name}`} className={buttonClass} onClick={() => void exportBook(item as AdminBook)}><Download size={14} />{exportingId === item.id ? '导出中…' : '一键导出'}</button>}<button type="button" disabled={busy} aria-label={`编辑${item.name}`} className={buttonClass} onClick={() => edit(item)}><Pencil size={14} />编辑</button><button type="button" disabled={busy} aria-label={`删除${item.name}`} className={`${buttonClass} text-red-400`} onClick={() => void remove(item)}><Trash2 size={14} /></button></div>{level !== 'sentence' && <button type="button" disabled={busy} className="flex items-center gap-1 text-sm font-black text-[#1899d6] hover:underline" onClick={() => level === 'book' ? navigate(item.id) : navigate(bookId, item.id)}>{level === 'book' ? '管理章节' : '管理句子'}<ChevronRight size={16} /></button>}</div>
             </div>
           </article>)}
@@ -196,9 +197,15 @@ export function AdminDashboard({ onExit }: { onExit: (changed: boolean) => Promi
         <form onSubmit={save} className="space-y-4"><fieldset disabled={busy} className="space-y-4 disabled:opacity-60">
           <label className="block text-sm font-bold">名称 <span className="text-red-400">*</span><input required maxLength={200} value={draft.name} onChange={e => patch({ name: e.target.value })} className={inputClass} placeholder={level === 'sentence' ? '例如：初次见面的问候' : `输入${labels[level]}名称`} /></label>
           {level !== 'sentence' && <label className="block text-sm font-bold">描述<textarea rows={3} maxLength={5000} value={draft.description} onChange={e => patch({ description: e.target.value })} className={inputClass} placeholder={`介绍这${level === 'book' ? '本书' : '一章'}的学习内容`} /></label>}
-          {level === 'book' && <><label className="block text-sm font-bold">封面图片地址<input maxLength={2048} value={draft.thumbnail} onChange={e => patch({ thumbnail: e.target.value })} className={inputClass} placeholder="https://example.com/cover.jpg" /><span className="block text-xs font-normal text-slate-400 mt-2">支持输入图片地址，或从本地上传 JPG、PNG、WebP（最大 5 MB）。</span></label><label className={`${buttonClass} cursor-pointer ${busy ? 'pointer-events-none opacity-50' : ''}`}><Upload size={16} />{uploading ? '正在上传…' : '上传本地封面'}<input type="file" accept="image/jpeg,image/png,image/webp" aria-label="上传本地封面" className="sr-only" onChange={event => void uploadCover(event)} /></label>{uploading && <p role="status" className="text-xs text-sky-600">正在上传封面，请稍候…</p>}{draft.thumbnail && /^(https?:\/\/|\/(?!\/))/.test(draft.thumbnail) && <img src={draft.thumbnail} alt="封面预览" className="max-h-40 rounded-xl object-cover" />}</>}
+          {level === 'book' && <><label className="block text-sm font-bold">封面图片地址<input maxLength={2048} value={draft.thumbnail} onChange={e => patch({ thumbnail: e.target.value })} className={inputClass} placeholder="https://example.com/cover.jpg" /><span className="block text-xs font-normal text-slate-400 mt-2">支持输入图片地址，或从本地上传 JPG、PNG、WebP（最大 5 MB）。</span></label><label className={`${buttonClass} cursor-pointer ${busy ? 'pointer-events-none opacity-50' : ''}`}><Upload size={16} />{uploading ? '正在上传…' : '上传本地封面'}<input type="file" accept="image/jpeg,image/png,image/webp" aria-label="上传本地封面" className="sr-only" onChange={event => void uploadImage(event, 'book')} /></label>{uploading && <p role="status" className="text-xs text-sky-600">正在上传封面，请稍候…</p>}{draft.thumbnail && /^(https?:\/\/|\/(?!\/))/.test(draft.thumbnail) && <img src={draft.thumbnail} alt="封面预览" className="max-h-40 rounded-xl object-cover" />}</>}
           {level === 'chapter' && <div><label className="block text-sm font-bold">章节图标<input required maxLength={32} value={draft.icon} onChange={e => patch({ icon: e.target.value })} className={inputClass} /></label><div aria-label="快速选择 Emoji" className="grid grid-cols-8 gap-1 mt-3 rounded-xl bg-slate-50 p-2">{emojis.map(emoji => <button type="button" key={emoji} aria-label={`选择图标 ${emoji}`} aria-pressed={draft.icon === emoji} className={`rounded-lg p-1 text-xl hover:bg-sky-100 ${draft.icon === emoji ? 'bg-sky-100 ring-2 ring-[#1cb0f6]' : ''}`} onClick={() => patch({ icon: emoji })}>{emoji}</button>)}</div></div>}
           {level === 'sentence' && <>
+            <div className="rounded-xl border border-slate-200 p-3 space-y-3">
+              <div><h3 className="text-sm font-bold">句子图片 <span className="font-normal text-slate-400">（可选）</span></h3><p className="mt-1 text-xs text-slate-400">上传 JPG、PNG 或 WebP，最大 5 MB；有图片时会在练习页面显示。</p></div>
+              <label className={`${buttonClass} cursor-pointer ${busy ? 'pointer-events-none opacity-50' : ''}`}><Upload size={16} />{uploading ? '正在上传…' : draft.imageUrl ? '更换图片' : '上传句子图片'}<input type="file" accept="image/jpeg,image/png,image/webp" aria-label="上传句子图片" className="sr-only" onChange={event => void uploadImage(event, 'sentence')} /></label>
+              {uploading && <p role="status" className="text-xs text-sky-600">正在上传图片，请稍候…</p>}
+              {draft.imageUrl && <><img src={draft.imageUrl} alt="句子图片预览" className="max-h-48 w-full rounded-xl object-contain bg-slate-50" /><button type="button" className="text-xs text-red-500 underline" onClick={() => patch({ imageUrl: '' })}>移除图片</button></>}
+            </div>
             <label className="block text-sm font-bold">西班牙语 <span className="text-red-400">*</span><textarea lang="es" required maxLength={500} rows={2} value={draft.spanish} onChange={e => patch({ spanish: e.target.value })} className={inputClass} placeholder="¡Hola! Mucho gusto." /></label>
             <label className="block text-sm font-bold">中文释义 <span className="text-red-400">*</span><textarea required maxLength={2000} rows={2} value={draft.chinese} onChange={e => patch({ chinese: e.target.value })} className={inputClass} /></label>
             <label className="block text-sm font-bold">拼读 / 音标<input maxLength={2000} value={draft.phonetics} onChange={e => patch({ phonetics: e.target.value })} className={inputClass} placeholder="o-la! mu-cho gus-to" /></label>

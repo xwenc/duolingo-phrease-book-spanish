@@ -31,7 +31,7 @@ def chapter_data(chapter, sentence_count=0):
 
 def sentence_data(exercise):
     data = exercise.data
-    return dict(id=exercise.id, chapterId=exercise.chapter_id, name=data.get('name') or data.get('chinese', ''), spanish=data['spanish'], chinese=data['chinese'], phonetics=data.get('phonetics', ''), grammarTip=data.get('grammarTip') or '', vocabHints=[dict(es=hint['es'], chinese=hint['zh']) for hint in data.get('vocabHints', [])])
+    return dict(id=exercise.id, chapterId=exercise.chapter_id, name=data.get('name') or data.get('chinese', ''), imageUrl=data.get('imageUrl', ''), spanish=data['spanish'], chinese=data['chinese'], phonetics=data.get('phonetics', ''), grammarTip=data.get('grammarTip') or '', vocabHints=[dict(es=hint['es'], chinese=hint['zh']) for hint in data.get('vocabHints', [])])
 
 
 
@@ -160,7 +160,9 @@ def export_book(book_id: str, db=Depends(get_db)):
     exercises = db.scalars(select(Exercise).join(Chapter, Exercise.chapter_id == Chapter.id).where(Chapter.book_id == book_id).order_by(Exercise.id))
     grouped = {}
     for exercise in exercises:
-        grouped.setdefault(exercise.chapter_id, []).append({**sentence_data(exercise), 'difficulty': exercise.data.get('difficulty', 'easy')})
+        sentence = sentence_data(exercise)
+        sentence.pop('imageUrl', None)
+        grouped.setdefault(exercise.chapter_id, []).append({**sentence, 'difficulty': exercise.data.get('difficulty', 'easy')})
     payload = {
         'format': 'habla-espanol-book',
         'version': 1,
@@ -204,7 +206,7 @@ def import_book(file: UploadFile, db=Depends(get_db)):
                 db.add(chapter); db.flush()
                 for source_sentence in source_chapter.sentences:
                     id = str(uuid4())
-                    data = {'id': id, **exercise_data(source_sentence, chapter), 'difficulty': source_sentence.difficulty}
+                    data = {'id': id, **exercise_data(source_sentence, chapter), 'difficulty': source_sentence.difficulty, 'imageUrl': ''}
                     db.add(Exercise(id=id, chapter_id=chapter.id, data=data))
             db.commit()
         except Exception:

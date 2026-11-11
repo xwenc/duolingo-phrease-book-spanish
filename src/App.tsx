@@ -84,10 +84,12 @@ export default function App() {
   const books = useMemo(() => getBooks(catalog), [catalog]);
   const currentBook = books.find(book => book.id === currentBookId);
   const bookExercises = currentBook?.exercises || [];
-  const snapshot = (): BookProgress => ({ selectedUnitId, isStarredMode, currentIndex,
+  const snapshot = (): BookProgress => ({
+    selectedUnitId, isStarredMode, currentIndex,
     currentTranscript, status, evaluationResult, attemptId, isCompleted,
     sessionCorrectCount, sessionXpGained, sessionGemsGained,
-    starredIds: bookExercises.filter(ex => starredIds.includes(ex.id)).map(ex => ex.id) });
+    starredIds: bookExercises.filter(ex => starredIds.includes(ex.id)).map(ex => ex.id)
+  });
   const openBooks = () => {
     if (busy) return;
     TTSService.stop(); sttService.cancel();
@@ -263,8 +265,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f7f7f7] text-[#4b4b4b] flex flex-col font-['Nunito',sans-serif]">
-      <div className="px-4 pt-2 flex justify-between text-sm"><span>经验值 {xp}</span><button disabled={busy} onClick={async () => { try { await api('/logout', { method: 'POST' }); setAuthenticated(false); setBooksProgress({}); setCurrentBookId(''); setCurrentView('books'); handleRestart(); } catch (err) { setError((err as Error).message); } }}>退出登录</button></div>
-      {canResetData && <div className="px-4 flex justify-end gap-4"><button disabled={busy || currentView === 'admin'} className="text-sm font-bold text-sky-600 hover:underline disabled:opacity-50" onClick={() => { if (currentView === 'practice') openBooks(); TTSService.stop(); sttService.cancel(); setCurrentView('admin'); }}>管理后台</button><button disabled={busy} className="text-xs text-red-600 underline" onClick={() => { TTSService.stop(); sttService.cancel(); setResetOpen(true); }}>清空练习数据</button></div>}
+      <div className="px-4 pt-2 flex justify-between text-sm"><span>经验值 {xp}</span><div className='flex items-center justify-end'>{canResetData && <div className="px-4 flex justify-end gap-4"><button disabled={busy || currentView === 'admin'} className="text-sm font-bold text-sky-600 hover:underline disabled:opacity-50" onClick={() => { if (currentView === 'practice') openBooks(); TTSService.stop(); sttService.cancel(); setCurrentView('admin'); }}>管理后台</button><button disabled={busy} className="text-xs text-red-600 underline" onClick={() => { TTSService.stop(); sttService.cancel(); setResetOpen(true); }}>重置练习数据</button></div>}<button disabled={busy} onClick={async () => { try { await api('/logout', { method: 'POST' }); setAuthenticated(false); setBooksProgress({}); setCurrentBookId(''); setCurrentView('books'); handleRestart(); } catch (err) { setError((err as Error).message); } }}>退出登录</button></div></div>
       {resetOpen && <ResetPracticeModal busy={busy} onClose={() => setResetOpen(false)} onReset={handleResetData} />}
       {notice && <p role="status" className="px-4 text-green-700">{notice}</p>}
       {error && <p role="alert" className="p-3 text-red-600">{error}</p>}
@@ -275,120 +276,120 @@ export default function App() {
         if (changed) { setBooksProgress({}); setCurrentBookId(''); setSelectedUnitId('all'); setIsStarredMode(false); handleRestart(); }
         setCurrentView('books');
       }} /> : currentView === 'books' ? <BooksLibrary books={books} progress={booksProgress} currentBookId={currentBookId} starredIds={starredIds} onSelectBook={selectBook} /> : <>
-      {/* Duolingo Sticky Top Header */}
-      <Header
-        currentIndex={currentIndex}
-        totalQuestions={activeExercises.length}
-        hearts={hearts}
-        streak={streak}
-        gems={gems}
-        starredCount={starredExercises.length}
-        isStarredMode={isStarredMode}
-        isMuted={isMuted}
-        onToggleMute={handleToggleMute}
-        onOpenDifficultiesModal={() => setIsDifficultiesModalOpen(true)}
-        onOpenUnitSelector={() => setIsUnitSelectorOpen(true)}
-        onExitPractice={openBooks}
-        heartLostPulse={heartLostPulse}
-      />
-
-      {/* Main Practice Stage */}
-      <main className="flex-1 w-full max-w-2xl mx-auto px-4 pt-3 pb-32 flex flex-col items-center justify-start">
-        {isCompleted ? (
-          /* Completion Screen */
-          <CompletionCelebration
-            totalQuestions={activeExercises.length}
-            correctCount={sessionCorrectCount}
-            xpEarned={sessionXpGained}
-            gemsEarned={sessionGemsGained}
-            streak={streak}
-            starredCount={starredExercises.length}
-            onRestart={handleRestart}
-            onPracticeStarred={handleStartStarredPractice}
-            onOpenUnitSelector={() => setIsUnitSelectorOpen(true)}
-          />
-        ) : (
-          /* Active Question Flow */
-          <div className="w-full flex flex-col gap-4 animate-in fade-in duration-300">
-            {/* Mode Banner if in Starred Review */}
-            {isStarredMode && (
-              <div className="w-full py-2 px-3 bg-amber-100 border border-amber-300 rounded-2xl flex items-center justify-between text-xs font-black text-amber-900 shadow-xs">
-                <span>⭐ 当前为难点专项强化复习模式 ({currentIndex + 1}/{activeExercises.length})</span>
-                <button
-                  onClick={() => handleSelectUnit('all')}
-                  className="text-amber-800 underline hover:text-amber-950 font-bold"
-                >
-                  退出专项
-                </button>
-              </div>
-            )}
-
-            {/* Question Card */}
-            <QuestionCard
-              exercise={currentExercise}
-              isStarred={starredIds.includes(currentExercise.id)}
-              onToggleStar={handleToggleStar}
-              owlMood={owlMood}
-            />
-
-            {/* Word-by-Word Diff View if checked */}
-            {evaluationResult && status !== 'unanswered' ? (
-              <WordDiffView
-                diffTokens={evaluationResult.diffTokens}
-                rawSpoken={evaluationResult.rawSpoken}
-                isPassed={evaluationResult.isPassed}
-                score={evaluationResult.score}
-              />
-            ) : (
-              /* Speech Recording / Input Section */
-              <SpeechRecorder
-                key={`${currentExercise.id}:${resetOpen}`}
-                shortcutsEnabled={!resetOpen && !isDifficultiesModalOpen && !isHeartRestockOpen && !isUnitSelectorOpen}
-                currentTranscript={currentTranscript}
-                onTranscriptChange={text => { setCurrentTranscript(text); setAttemptId(crypto.randomUUID()); }}
-                isEvaluating={status !== 'unanswered'}
-                disabled={busy || status !== 'unanswered'}
-              />
-            )}
-          </div>
-        )}
-      </main>
-
-      {/* Duolingo 3D Tactile Bottom Action Bar */}
-      {!isCompleted && (
-        <BottomActionBar
-          status={status}
-          hasInput={!busy && currentTranscript.trim().length > 0}
-          onCheck={handleCheck}
-          onSkip={handleSkip}
-          onNext={handleNext}
-          evaluationResult={evaluationResult}
-          currentExercise={currentExercise}
+        {/* Duolingo Sticky Top Header */}
+        <Header
+          currentIndex={currentIndex}
+          totalQuestions={activeExercises.length}
+          hearts={hearts}
+          streak={streak}
+          gems={gems}
+          starredCount={starredExercises.length}
+          isStarredMode={isStarredMode}
+          isMuted={isMuted}
+          onToggleMute={handleToggleMute}
+          onOpenDifficultiesModal={() => setIsDifficultiesModalOpen(true)}
+          onOpenUnitSelector={() => setIsUnitSelectorOpen(true)}
+          onExitPractice={openBooks}
+          heartLostPulse={heartLostPulse}
         />
-      )}
 
-      {/* Modals */}
-      <DifficultiesModal
-        isOpen={isDifficultiesModalOpen}
-        onClose={() => setIsDifficultiesModalOpen(false)}
-        starredExercises={starredExercises}
-        onRemoveStar={handleRemoveStar}
-        onStartStarredPractice={handleStartStarredPractice}
-      />
+        {/* Main Practice Stage */}
+        <main className="flex-1 w-full max-w-2xl mx-auto px-4 pt-3 pb-32 flex flex-col items-center justify-start">
+          {isCompleted ? (
+            /* Completion Screen */
+            <CompletionCelebration
+              totalQuestions={activeExercises.length}
+              correctCount={sessionCorrectCount}
+              xpEarned={sessionXpGained}
+              gemsEarned={sessionGemsGained}
+              streak={streak}
+              starredCount={starredExercises.length}
+              onRestart={handleRestart}
+              onPracticeStarred={handleStartStarredPractice}
+              onOpenUnitSelector={() => setIsUnitSelectorOpen(true)}
+            />
+          ) : (
+            /* Active Question Flow */
+            <div className="w-full flex flex-col gap-4 animate-in fade-in duration-300">
+              {/* Mode Banner if in Starred Review */}
+              {isStarredMode && (
+                <div className="w-full py-2 px-3 bg-amber-100 border border-amber-300 rounded-2xl flex items-center justify-between text-xs font-black text-amber-900 shadow-xs">
+                  <span>⭐ 当前为难点专项强化复习模式 ({currentIndex + 1}/{activeExercises.length})</span>
+                  <button
+                    onClick={() => handleSelectUnit('all')}
+                    className="text-amber-800 underline hover:text-amber-950 font-bold"
+                  >
+                    退出专项
+                  </button>
+                </div>
+              )}
 
-      <HeartRestockModal
-        isOpen={isHeartRestockOpen}
-        onClose={() => setIsHeartRestockOpen(false)}
-        onRefillFull={handleRefillFull}
-      />
+              {/* Question Card */}
+              <QuestionCard
+                exercise={currentExercise}
+                isStarred={starredIds.includes(currentExercise.id)}
+                onToggleStar={handleToggleStar}
+                owlMood={owlMood}
+              />
 
-      <UnitSelectorModal
-        isOpen={isUnitSelectorOpen}
-        onClose={() => setIsUnitSelectorOpen(false)}
-        chapters={currentBook?.chapters || []}
-        selectedUnitId={selectedUnitId}
-        onSelectUnit={handleSelectUnit}
-      />
+              {/* Word-by-Word Diff View if checked */}
+              {evaluationResult && status !== 'unanswered' ? (
+                <WordDiffView
+                  diffTokens={evaluationResult.diffTokens}
+                  rawSpoken={evaluationResult.rawSpoken}
+                  isPassed={evaluationResult.isPassed}
+                  score={evaluationResult.score}
+                />
+              ) : (
+                /* Speech Recording / Input Section */
+                <SpeechRecorder
+                  key={`${currentExercise.id}:${resetOpen}`}
+                  shortcutsEnabled={!resetOpen && !isDifficultiesModalOpen && !isHeartRestockOpen && !isUnitSelectorOpen}
+                  currentTranscript={currentTranscript}
+                  onTranscriptChange={text => { setCurrentTranscript(text); setAttemptId(crypto.randomUUID()); }}
+                  isEvaluating={status !== 'unanswered'}
+                  disabled={busy || status !== 'unanswered'}
+                />
+              )}
+            </div>
+          )}
+        </main>
+
+        {/* Duolingo 3D Tactile Bottom Action Bar */}
+        {!isCompleted && (
+          <BottomActionBar
+            status={status}
+            hasInput={!busy && currentTranscript.trim().length > 0}
+            onCheck={handleCheck}
+            onSkip={handleSkip}
+            onNext={handleNext}
+            evaluationResult={evaluationResult}
+            currentExercise={currentExercise}
+          />
+        )}
+
+        {/* Modals */}
+        <DifficultiesModal
+          isOpen={isDifficultiesModalOpen}
+          onClose={() => setIsDifficultiesModalOpen(false)}
+          starredExercises={starredExercises}
+          onRemoveStar={handleRemoveStar}
+          onStartStarredPractice={handleStartStarredPractice}
+        />
+
+        <HeartRestockModal
+          isOpen={isHeartRestockOpen}
+          onClose={() => setIsHeartRestockOpen(false)}
+          onRefillFull={handleRefillFull}
+        />
+
+        <UnitSelectorModal
+          isOpen={isUnitSelectorOpen}
+          onClose={() => setIsUnitSelectorOpen(false)}
+          chapters={currentBook?.chapters || []}
+          selectedUnitId={selectedUnitId}
+          onSelectUnit={handleSelectUnit}
+        />
       </>}
     </div>
   );

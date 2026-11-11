@@ -56,3 +56,33 @@ def test_reject_invalid_oversized_and_unsupported_uploads(client, monkeypatch, t
     assert c.get('/api/covers/not-a-cover.webp').status_code == 404
     assert c.get('/api/covers/' + '0' * 32 + '.webp').status_code == 404
     assert list(tmp_path.iterdir()) == []
+
+
+def test_optional_sentence_image_upload_save_catalog_export_and_removal(client, monkeypatch, tmp_path):
+    from test_catalog import create_tree, SENTENCE
+    from test_api import register
+    c, _ = client
+    monkeypatch.setenv('UPLOAD_DIR', str(tmp_path))
+    monkeypatch.setenv('ADMIN_EMAIL', 'test@example.com')
+    register(c)
+    book, chapter, sentence = create_tree(c)
+    assert sentence['imageUrl'] == ''
+    uploaded = c.post('/api/admin/sentence-images', files={'file': ('sentence.png', picture(), 'image/png')})
+    assert uploaded.status_code == 201
+    url = uploaded.json()['url']
+    path = f"/api/admin/sentences/{sentence['id']}"
+    updated = c.put(path, json={**SENTENCE, 'imageUrl': url})
+    assert updated.status_code == 200
+    assert updated.json()['imageUrl'] == url
+    assert c.get(f"/api/admin/chapters/{chapter['id']}/sentences").json()[0]['imageUrl'] == url
+    catalog = c.get('/api/catalog').json()
+    assert next(ex for ex in catalog['exercises'] if ex['id'] == sentence['id'])['imageUrl'] == url
+    exported = c.get(f"/api/admin/books/{book['id']}/export")
+    assert 'imageUrl' not in exported.text
+    assert url not in exported.text
+    assert c.put(path, json={**SENTENCE, 'name': '只改名称'}).json()['imageUrl'] == url
+    assert c.put(path, json={**SENTENCE, 'imageUrl': 'javascript:bad'}).status_code == 422
+    assert c.put(path, json={**SENTENCE, 'imageUrl': ''}).json()['imageUrl'] == ''
+    register(c, 'learner@example.com')
+    assert c.get(url).status_code == 200
+    assert c.post('/api/admin/sentence-images', files={'file': ('sentence.png', picture(), 'image/png')}).status_code == 403

@@ -18,6 +18,8 @@ def test_default_book_seed_is_idempotent_and_updates_all_fields(client):
         assert result['chapters']['inserted'] == 6
         assert result['sentences']['inserted'] == count
         db.get(Book, payload.book.id).thumbnail = '/existing-cover.webp'
+        image_exercise = db.get(Exercise, payload.book.chapters[0].sentences[0].id)
+        image_exercise.data = {**image_exercise.data, 'imageUrl': '/existing-sentence.webp'}
         user = User(email='existing@example.com', password='stored-hash', xp=77)
         db.add(user); db.flush()
         exercise_id = payload.book.chapters[0].sentences[0].id
@@ -42,6 +44,7 @@ def test_default_book_seed_is_idempotent_and_updates_all_fields(client):
         assert saved.data['unitName'] == '更新章节'
         assert saved.data['vocabHints'] == [{'es': 'nuevo', 'zh': '新的'}]
         assert db.get(Book, payload.book.id).thumbnail == '/existing-cover.webp'
+        assert saved.data['imageUrl'] == '/existing-sentence.webp'
         assert db.get(Exercise, 'one') is not None
 
 

@@ -7,6 +7,12 @@ class CatalogInput(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
 
+def validate_image_url(value):
+    if value and not (value.startswith(('https://', 'http://')) or (value.startswith('/') and not value.startswith('//'))):
+        raise ValueError('图片须为 http(s) 地址或站内路径')
+    return value
+
+
 class BookInput(CatalogInput):
     description: str = Field(default='', max_length=5000)
     thumbnail: str = Field(default='', max_length=2048)
@@ -14,9 +20,7 @@ class BookInput(CatalogInput):
     @field_validator('thumbnail')
     @classmethod
     def image_url(cls, value):
-        if value and not (value.startswith(('https://', 'http://')) or (value.startswith('/') and not value.startswith('//'))):
-            raise ValueError('封面须为 http(s) 图片地址或站内路径')
-        return value
+        return validate_image_url(value)
 
 
 class ChapterInput(CatalogInput):
@@ -31,6 +35,13 @@ class VocabInput(BaseModel):
 
 
 class SentenceInput(CatalogInput):
+    imageUrl: str = Field(default='', max_length=2048)
+
+    @field_validator('imageUrl')
+    @classmethod
+    def image_url(cls, value):
+        return validate_image_url(value)
+
     spanish: str = Field(min_length=1, max_length=500)
     chinese: str = Field(min_length=1, max_length=2000)
     phonetics: str = Field(default='', max_length=2000)
@@ -82,5 +93,5 @@ class BookImport(BaseModel):
         return self
 
 def exercise_data(body, chapter, existing=None):
-    return {**(existing or {}), 'name': body.name, 'spanish': body.spanish, 'chinese': body.chinese, 'phonetics': body.phonetics, 'grammarTip': body.grammarTip, 'unitId': chapter.id, 'unitName': chapter.name, 'vocabHints': [dict(es=hint.es, zh=hint.chinese) for hint in body.vocabHints], 'difficulty': (existing or {}).get('difficulty', 'easy')}
+    return {**(existing or {}), 'name': body.name, 'imageUrl': body.imageUrl if 'imageUrl' in body.model_fields_set else (existing or {}).get('imageUrl', ''), 'spanish': body.spanish, 'chinese': body.chinese, 'phonetics': body.phonetics, 'grammarTip': body.grammarTip, 'unitId': chapter.id, 'unitName': chapter.name, 'vocabHints': [dict(es=hint.es, zh=hint.chinese) for hint in body.vocabHints], 'difficulty': (existing or {}).get('difficulty', 'easy')}
 

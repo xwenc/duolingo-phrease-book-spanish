@@ -1,4 +1,4 @@
-"""Validated local cover uploads, served through authenticated same-origin URLs."""
+"""Validated book and sentence images, served through authenticated URLs."""
 from io import BytesIO
 import os
 from pathlib import Path
@@ -39,18 +39,19 @@ def store_cover(data):
         directory.mkdir(parents=True, exist_ok=True)
         (directory / name).write_bytes(output.getvalue())
     except OSError:
-        raise HTTPException(503, '封面保存失败，请检查上传目录权限后重试')
+        raise HTTPException(503, '图片保存失败，请检查上传目录权限后重试')
     return {'url': f'/api/covers/{name}'}
 
 
 @router.post('/admin/covers', status_code=201, dependencies=[Depends(require_admin)])
+@router.post('/admin/sentence-images', status_code=201, dependencies=[Depends(require_admin)])
 async def upload_cover(file: UploadFile):
     try:
         if file.content_type not in {'image/jpeg', 'image/png', 'image/webp'}:
             raise HTTPException(415, '仅支持 JPG、PNG 和 WebP 图片')
         data = await file.read(MAX_BYTES + 1)
         if len(data) > MAX_BYTES:
-            raise HTTPException(413, '封面图片不能超过 5 MB')
+            raise HTTPException(413, '图片不能超过 5 MB')
         return await run_in_threadpool(store_cover, data)
     finally:
         await file.close()
@@ -59,8 +60,8 @@ async def upload_cover(file: UploadFile):
 @router.get('/covers/{filename}', dependencies=[Depends(current_user)])
 def read_cover(filename: str):
     if not re.fullmatch(r'[0-9a-f]{32}\.webp', filename):
-        raise HTTPException(404, '封面不存在')
+        raise HTTPException(404, '图片不存在')
     path = upload_directory() / filename
     if not path.is_file():
-        raise HTTPException(404, '封面不存在')
+        raise HTTPException(404, '图片不存在')
     return FileResponse(path, media_type='image/webp')
