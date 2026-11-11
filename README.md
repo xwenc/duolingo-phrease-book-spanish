@@ -20,6 +20,8 @@
 
 评分基于 faster-whisper 转写文本与标准答案的逐词对齐，忽略大小写、元音重音和标点，保留 `ñ` 与 `n` 的区别，额外识别词也会影响得分。它用于辅助练习，不是音素、韵律或口音准确度测评。
 
+完成页的平均准确率为本轮已判题句子分数的算术平均值（跳过计 0 分），不是答对比例。切换单元、进入难点复习或重新开始会清空本轮统计；切换书籍再返回会恢复该书的本轮分数。
+
 ## 技术栈
 
 | 层级 | 技术与职责 |
@@ -353,10 +355,9 @@ Ming 模型采用 [MIT](https://huggingface.co/mlx-community/Ming-3.0-tts-0.5B-b
 
 使用 `ADMIN_EMAIL` 管理员登录后，点击页面顶部的“管理后台”。可新增、编辑、删除书籍、章节和句子；点击“管理章节”“管理句子”逐级进入，顶部面包屑可返回任一级。书籍支持名称、描述、封面图片地址，章节支持名称、描述、Emoji 图标，句子支持名称、西班牙语、中文、拼读、语法提示及多组生词卡片。后台的词汇字段为 `{ es, chinese }`，练习 API 兼容原有 `{ es, zh }`。
 
-升级已有部署时，先备份数据库，然后执行迁移并重建 API 和 Web：
+升级已有部署时，先备份数据库，再重建 API 和 Web；API 启动会自动执行迁移，不会重新 seed：
 
 ```bash
-docker compose --profile setup run --build --rm init
 docker compose up -d --build api web
 ```
 
@@ -387,3 +388,55 @@ docker compose up -d --build api web
 句子表单支持“上传句子图片”（JPG、PNG、WebP，最大 5 MB），上传后可预览、更换或移除，点击“保存”后生效。无图片时正常保存和练习；有图片时在后台句子卡片和练习题上方显示，练习端加载失败时隐藏图片区域。
 
 句子 API 使用可选 `imageUrl` 字段，省略时更新会保留原图，传空字符串则移除。`POST /api/admin/sentence-images` 复用封面的验证与持久存储，返回图片地址。无需数据库迁移。书籍导出依然不包含图片文件或图片地址；导入不恢复图片，seed 更新保留已有句子图片。
+
+### 为章节批量导入句子
+
+在后台进入“书籍 → 章节 → 管理句子”，点击“批量导入句子”，上传 UTF-8 JSON 文件。顶层支持句子对象数组，也支持 `{ "sentences": [...] }` 包装；最大 5 MB，每次 1–10000 个句子。示例：
+
+```json
+[
+  {
+    "name": "问候",
+    "spanish": "¡Hola!",
+    "chinese": "你好！",
+    "phonetics": "o-la",
+    "grammarTip": "常用问候。",
+    "difficulty": "easy",
+    "vocabHints": [{"es": "Hola", "chinese": "你好"}]
+  },
+  {
+    "name": "致谢",
+    "spanish": "Gracias.",
+    "chinese": "谢谢。"
+  }
+]
+```
+
+`name`、`spanish`、`chinese` 必填；其余字段可省略，难度默认 `easy`，生词默认空数组。可选 `imageUrl` 用于引用已上传图片或有效图片地址，不支持在 JSON 中上传图片文件。允许直接复制书籍导出中的 `sentences` 数组，原 `id`、`chapterId` 均忽略，为每个句子生成新 ID，并统一归入当前章节。
+
+仅管理员可操作。每次导入都追加新句子，不覆盖或自动去重；全部校验通过后以单个事务保存，任一失败不会留下部分句子。成功后刷新当前章节列表并显示新增数量。接口：`POST /api/admin/chapters/{chapter_id}/sentences/import`，multipart 字段为 `file`。
+
+### 句子列表排序
+
+在后台章节的句子列表中，使用“上移 / 下移”调整位置，操作后自动保存；每条句子显示当前序号。第一句不能上移，最后一句不能下移。练习顺序、后台列表与书籍导出的 `sentences` 数组顺序保持一致。
+
+单句新增与批量导入追加到章节末尾，批量导入及整本书导入保留数组顺序。seed 按示例文件中句子的数组顺序同步；执行 seed 会更新示例书籍已有句子的排序。
+
+新迁移 `0003` 添加句子排序字段，按原来的 ID 顺序初始化已有数据，不修改句子内容或练习记录。开发环境执行 `npm run dev:backend:migrate`（或重启 `npm run dev:backend` 自动迁移）；Docker 环境运行初始化服务并重新构建 API / Web。管理员排序接口为 `PUT /api/admin/chapters/{chapter_id}/sentences/order`，请求 `{ "sentenceIds": ["句子ID", "..."] }` 必须恰好包含当前章节全部句子且不重复；列表已变化时返回 409，需重新加载后再调整。
+
+### Docker 升级与缺失字段修复
+
+API 容器现在通过 `start-api.sh` 启动：先执行 `alembic upgrade head`，成功后再运行 Uvicorn；迁移失败则不提供 API 服务。启动不会运行 seed，也不会覆盖后台编辑的教材。更新后执行：
+
+```sh
+docker compose up -d --build api web
+```
+
+已运行的旧容器出现 `Unknown column 'exercises.sort_order'`，表示该容器连接的数据库尚未执行 `0003` 迁移，可先执行以下命令立即修复，再重建 API 以启用自动迁移：
+
+```sh
+docker compose exec -T api python -m alembic upgrade head
+docker compose up -d --build --no-deps api
+```
+
+本机开发数据库与 Docker 内 MySQL 是两个独立环境，迁移必须在实际运行 API 的环境中执行。此修复只新增排序字段并保留原有句子、账户和练习记录，不需要重新 seed 或清空数据库。

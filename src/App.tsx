@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { api, submitAttempt, fetchCatalog, type LearningCatalog, type Stats } from './services/api';
 import { AuthGate } from './components/AuthGate';
 import { ResetPracticeModal } from './components/ResetPracticeModal';
@@ -69,9 +69,16 @@ export default function App() {
   const [heartLostPulse, setHeartLostPulse] = useState<boolean>(false);
 
   // 本轮训练统计
-  const [sessionCorrectCount, setSessionCorrectCount] = useState<number>(0);
+  const [sessionScores, setSessionScores] = useState<Record<string, number>>({});
+  const attemptPending = useRef(false);
   const [sessionXpGained, setSessionXpGained] = useState<number>(0);
   const [sessionGemsGained, setSessionGemsGained] = useState<number>(0);
+
+  const resetSessionStats = () => {
+    setSessionScores({});
+    setSessionXpGained(0);
+    setSessionGemsGained(0);
+  };
 
   // 弹窗状态
   const [isDifficultiesModalOpen, setIsDifficultiesModalOpen] = useState<boolean>(false);
@@ -87,7 +94,7 @@ export default function App() {
   const snapshot = (): BookProgress => ({
     selectedUnitId, isStarredMode, currentIndex,
     currentTranscript, status, evaluationResult, attemptId, isCompleted,
-    sessionCorrectCount, sessionXpGained, sessionGemsGained,
+    sessionScores, sessionXpGained, sessionGemsGained,
     starredIds: bookExercises.filter(ex => starredIds.includes(ex.id)).map(ex => ex.id)
   });
   const openBooks = () => {
@@ -106,7 +113,7 @@ export default function App() {
       setSelectedUnitId(saved.selectedUnitId); setIsStarredMode(saved.isStarredMode);
       setCurrentIndex(saved.currentIndex); setCurrentTranscript(saved.currentTranscript);
       setStatus(saved.status); setEvaluationResult(saved.evaluationResult); setAttemptId(saved.attemptId);
-      setIsCompleted(saved.isCompleted); setSessionCorrectCount(saved.sessionCorrectCount);
+      setIsCompleted(saved.isCompleted); setSessionScores(saved.sessionScores);
       setSessionXpGained(saved.sessionXpGained); setSessionGemsGained(saved.sessionGemsGained);
       if (saved.isCompleted) handleRestart();
     } else { setSelectedUnitId('all'); setIsStarredMode(false); handleRestart(); }
@@ -151,6 +158,7 @@ export default function App() {
 
   // 开启难点专项强化练习
   const handleStartStarredPractice = () => {
+    resetSessionStats();
     setIsDifficultiesModalOpen(false);
     setIsStarredMode(true);
     setCurrentIndex(0);
@@ -163,6 +171,7 @@ export default function App() {
 
   // 切换单元
   const handleSelectUnit = (unitId: string | 'all') => {
+    resetSessionStats();
     setSelectedUnitId(unitId);
     setIsStarredMode(false);
     setCurrentIndex(0);
@@ -174,20 +183,22 @@ export default function App() {
   };
 
   const check = async (transcript: string) => {
-    if (busy || status !== 'unanswered') return;
+    if (attemptPending.current || busy || status !== 'unanswered') return;
     if (hearts <= 0) { setIsHeartRestockOpen(true); return; }
+    attemptPending.current = true;
     setBusy(true); setError('');
     try {
       const { evaluation, stats } = await submitAttempt(currentExercise.id, transcript, attemptId);
+      setSessionScores(previous => ({ ...previous, [currentExercise.id]: evaluation.score }));
       setSessionXpGained(x => x + Math.max(0, stats.xp - xp));
       setSessionGemsGained(g => g + Math.max(0, stats.gems - gems));
       applyStats(stats); setEvaluationResult(evaluation);
       setStatus(evaluation.isPassed ? 'correct' : 'incorrect');
-      if (evaluation.isPassed) { soundEffects.playCorrectSound(); setSessionCorrectCount(c => c + 1); }
+      if (evaluation.isPassed) { soundEffects.playCorrectSound(); }
       else { soundEffects.playIncorrectSound(); setHeartLostPulse(true); setTimeout(() => setHeartLostPulse(false), 500); }
       if (!stats.hearts) setIsHeartRestockOpen(true);
     } catch (err) { setError((err as Error).message); }
-    finally { setBusy(false); }
+    finally { attemptPending.current = false; setBusy(false); }
   };
   const handleCheck = () => { if (currentTranscript.trim()) void check(currentTranscript); };
   const handleSkip = () => { void check(''); };
@@ -216,9 +227,7 @@ export default function App() {
     setEvaluationResult(null);
     setAttemptId(crypto.randomUUID());
     setIsCompleted(false);
-    setSessionCorrectCount(0);
-    setSessionXpGained(0);
-    setSessionGemsGained(0);
+    resetSessionStats();
   };
 
   const handleRefillFull = async () => {
@@ -280,6 +289,8 @@ export default function App() {
         <Header
           currentIndex={currentIndex}
           totalQuestions={activeExercises.length}
+          status={status}
+          isCompleted={isCompleted}
           hearts={hearts}
           streak={streak}
           gems={gems}
@@ -298,8 +309,7 @@ export default function App() {
           {isCompleted ? (
             /* Completion Screen */
             <CompletionCelebration
-              totalQuestions={activeExercises.length}
-              correctCount={sessionCorrectCount}
+              scores={Object.values(sessionScores)}
               xpEarned={sessionXpGained}
               gemsEarned={sessionGemsGained}
               streak={streak}

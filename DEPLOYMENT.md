@@ -73,7 +73,7 @@ cd backend
 
 ## 数据变更与升级
 
-Alembic 管理数据库结构，初始迁移在 `backend/migrations/versions/0001_initial.py`。升级已有环境先备份数据库，再运行 `docker compose --profile setup run --build --rm init`，最后重新部署 API / web。种子导入使用 `backend/app/book.json` 的 `habla-espanol-book` 版本 1 格式，与后台导入共用校验；按 ID 幂等同步书籍、章节、句子，不删除额外内容、账户或练习记录，保留已有封面。开发环境可运行 `npm run dev:backend:seed -- --file ./path/to/book.json` 指定其他导出文件。未来数据库变更必须新增迁移文件；运行时不会自动 `create_all` 或覆盖数据。
+Alembic 管理数据库结构，初始迁移在 `backend/migrations/versions/0001_initial.py`。升级已有环境先备份数据库，再运行 `docker compose up -d --build api web`。API 容器启动会先执行 `alembic upgrade head`，成功后才提供服务，失败则停止；不会自动 seed。`init` 用于首次初始化或显式同步示例书籍，升级时不必执行，以免覆盖同 ID 教材。种子导入使用 `backend/app/book.json` 的 `habla-espanol-book` 版本 1 格式，与后台导入共用校验；按 ID 幂等同步书籍、章节、句子，不删除额外内容、账户或练习记录，保留已有封面。开发环境可运行 `npm run dev:backend:seed -- --file ./path/to/book.json` 指定其他导出文件。未来数据库变更必须新增迁移文件；运行时不会自动 `create_all` 或覆盖数据。
 
 原演示 localStorage 里的积分与收藏没有可信来源，不自动导入账户。已有用户需注册新账户。
 

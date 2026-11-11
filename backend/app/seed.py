@@ -71,7 +71,7 @@ def sync_book(db, payload):
                     raise ValueError(f'句子 ID {id} 已属于其他书籍，未导入任何数据')
             data = {'id': id, **exercise_data(sentence, chapter), 'difficulty': sentence.difficulty,
                     'imageUrl': existing.data.get('imageUrl', '') if existing else ''}
-            upsert(Exercise, id, {'chapter_id': chapter_id, 'data': data}, 'sentences')
+            upsert(Exercise, id, {'chapter_id': chapter_id, 'sort_order': sentence_index, 'data': data}, 'sentences')
     return result
 
 

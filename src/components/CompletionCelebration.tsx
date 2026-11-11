@@ -5,12 +5,12 @@
 
 import React, { useEffect } from 'react';
 import { Sparkles, Flame, Gem, Trophy, RotateCcw, Star, Layers } from 'lucide-react';
+import { getAverageAccuracy } from '../utils/sessionAccuracy';
 import { DuoOwl } from './DuoOwl';
 import { soundEffects } from '../services/soundEffects';
 
 interface CompletionCelebrationProps {
-  totalQuestions: number;
-  correctCount: number;
+  scores: number[];
   xpEarned: number;
   gemsEarned: number;
   streak: number;
@@ -21,8 +21,7 @@ interface CompletionCelebrationProps {
 }
 
 export const CompletionCelebration: React.FC<CompletionCelebrationProps> = ({
-  totalQuestions,
-  correctCount,
+  scores,
   xpEarned,
   gemsEarned,
   streak,
@@ -35,7 +34,7 @@ export const CompletionCelebration: React.FC<CompletionCelebrationProps> = ({
     soundEffects.playCompleteSound();
   }, []);
 
-  const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 100;
+  const accuracy = getAverageAccuracy(scores);
 
   return (
     <div className="w-full max-w-lg mx-auto py-8 px-4 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">

@@ -20,7 +20,7 @@ export interface BookProgress {
   evaluationResult: EvaluationResult | null;
   attemptId: string;
   isCompleted: boolean;
-  sessionCorrectCount: number;
+  sessionScores: Record<string, number>;
   sessionXpGained: number;
   sessionGemsGained: number;
   starredIds: string[];

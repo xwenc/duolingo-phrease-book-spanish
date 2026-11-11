@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, ChevronRight, Download, MessageSquare, Pencil, Plus, Save, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, ArrowDown, BookOpen, ChevronRight, Download, MessageSquare, Pencil, Plus, Save, Trash2, Upload, X } from 'lucide-react';
 import { api, type CatalogBook, type CatalogChapter } from '../services/api';
 
 type AdminBook = CatalogBook;
@@ -38,6 +38,7 @@ export function AdminDashboard({ onExit }: { onExit: (changed: boolean) => Promi
   const [exportingId, setExportingId] = useState('');
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const sentenceImportRef = useRef<HTMLInputElement>(null);
   const busy = saving || uploading || Boolean(exportingId) || importing;
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -144,6 +145,38 @@ export function AdminDashboard({ onExit }: { onExit: (changed: boolean) => Promi
     } catch (err) { setError((err as Error).message); }
     finally { setImporting(false); }
   };
+  const importSentences = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || busy || !chapterId || !discard()) return;
+    setError(''); setNotice('');
+    if (file.size > 5 * 1024 * 1024) { setError('句子 JSON 文件不能超过 5 MB'); return; }
+    setImporting(true);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const result = await api<{ chapterId: string; sentenceCount: number }>(`/admin/chapters/${chapterId}/sentences/import`, { method: 'POST', body });
+      changed.current = true; setDraft(null);
+      setRevision(value => value + 1);
+      setNotice(`已为当前章节添加 ${result.sentenceCount} 个句子`);
+    } catch (err) { setError((err as Error).message); }
+    finally { setImporting(false); }
+  };
+  const moveSentence = async (id: string, direction: -1 | 1) => {
+    if (busy || loading) return;
+    const index = sentences.findIndex(sentence => sentence.id === id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= sentences.length) return;
+    const reordered = [...sentences];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setSaving(true); setError(''); setNotice('');
+    try {
+      await api(`/admin/chapters/${chapterId}/sentences/order`, { method: 'PUT', body: JSON.stringify({ sentenceIds: reordered.map(sentence => sentence.id) }) });
+      setSentences(reordered); changed.current = true;
+      setNotice('句子顺序已保存，练习和导出将使用此顺序');
+    } catch (err) { setError((err as Error).message); }
+    finally { setSaving(false); }
+  };
   const exportBook = async (item: AdminBook) => {
     if (busy) return;
     setExportingId(item.id); setError(''); setNotice('');
@@ -182,12 +215,13 @@ export function AdminDashboard({ onExit }: { onExit: (changed: boolean) => Promi
     {notice && <p role="status" className="mb-5 rounded-xl bg-green-50 p-3 text-green-700 text-sm">{notice}</p>}
     <div className={`grid gap-6 items-start ${draft ? 'lg:grid-cols-[1fr_420px]' : ''}`}>
       <section aria-label={`${labels[level]}列表`}>
-        <div className="flex justify-between items-center gap-3 mb-5"><div><h2 className="text-xl font-black text-slate-700">{level === 'book' ? '所有书籍' : level === 'chapter' ? '章节目录' : '练习句子'} <span className="ml-2 text-sm font-bold text-slate-400">{items.length}</span></h2>{bookId && <p className="text-sm text-slate-500 mt-1 break-words">{chapterId ? chapter?.description : book?.description}</p>}</div><button type="button" disabled={busy || loading} className="duo-btn-green shrink-0 flex items-center gap-1 rounded-xl px-4 py-2.5 text-sm font-black disabled:opacity-50" onClick={() => edit()}><Plus size={17} />新增{labels[level]}</button></div>
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-5"><div><h2 className="text-xl font-black text-slate-700">{level === 'book' ? '所有书籍' : level === 'chapter' ? '章节目录' : '练习句子'} <span className="ml-2 text-sm font-bold text-slate-400">{items.length}</span></h2>{bookId && <p className="text-sm text-slate-500 mt-1 break-words">{chapterId ? chapter?.description : book?.description}</p>}</div><div className="flex flex-wrap gap-2">{level === 'sentence' && <><button type="button" disabled={busy || loading} className={buttonClass} onClick={() => sentenceImportRef.current?.click()}><Upload size={16} />{importing ? '正在导入…' : '批量导入句子'}</button><input ref={sentenceImportRef} type="file" accept=".json,application/json" aria-label="上传句子对象数组 JSON" className="hidden" disabled={busy} onChange={event => void importSentences(event)} /></>}<button type="button" disabled={busy || loading} className="duo-btn-green shrink-0 flex items-center gap-1 rounded-xl px-4 py-2.5 text-sm font-black disabled:opacity-50" onClick={() => edit()}><Plus size={17} />新增{labels[level]}</button></div></div>
+        {level === 'sentence' && <p className="text-xs text-slate-400 mb-4">使用上移 / 下移调整顺序，自动保存。批量导入按数组顺序追加到末尾；最大 5 MB，最多 10000 个句子。</p>}
         {loading ? <p role="status" className="p-10 text-center text-slate-400">正在加载{labels[level]}…</p> : !items.length ? <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white px-6 py-16 text-center"><BookOpen className="mx-auto text-[#1cb0f6] mb-4" size={40} /><h3 className="font-black text-lg">还没有{labels[level]}</h3><p className="text-sm text-slate-400 mt-2">点击“新增{labels[level]}”，添加第一条内容。</p></div> : <div className={`grid gap-4 ${level === 'book' && !draft ? 'sm:grid-cols-2 xl:grid-cols-3' : ''}`}>
-          {items.map(item => <article key={item.id} className="rounded-2xl border-2 border-b-4 border-slate-200 bg-white overflow-hidden">
+          {items.map((item, index) => <article key={item.id} className="rounded-2xl border-2 border-b-4 border-slate-200 bg-white overflow-hidden">
             {level === 'book' && 'thumbnail' in item && item.thumbnail && <img src={item.thumbnail} alt={`${item.name}封面`} className="h-36 w-full object-cover bg-slate-100" />}
-            <div className="p-5"><div className="flex gap-3 items-start"><div className="shrink-0 flex items-center justify-center rounded-xl bg-sky-50 text-[#1cb0f6] w-11 h-11">{'icon' in item ? <span className="text-2xl">{item.icon}</span> : level === 'sentence' ? <MessageSquare size={23} /> : <BookOpen size={23} />}</div><div className="min-w-0 flex-1"><h3 className="font-black text-slate-700 break-words">{item.name}</h3>{'spanish' in item ? <>{item.imageUrl && <img src={item.imageUrl} alt={`${item.name}配图`} className="mt-3 max-h-32 rounded-lg object-contain" />}<p lang="es" className="mt-2 text-sm text-[#1899d6] break-words">{item.spanish}</p><p className="text-sm text-slate-500 mt-1 break-words">{item.chinese}</p><p className="text-xs text-slate-400 mt-2">{item.vocabHints.length} 个生词</p></> : <><p className="mt-1 text-sm text-slate-500 line-clamp-2 break-words">{item.description || '暂无描述'}</p><p className="mt-2 text-xs font-bold text-slate-400">{'chapterCount' in item ? `${item.chapterCount} 个章节` : `${item.sentenceCount} 个句子`}</p></>}</div></div>
-              <div className="flex flex-wrap justify-between gap-2 mt-5 pt-4 border-t border-slate-100"><div className="flex flex-wrap gap-2">{level === 'book' && <button type="button" disabled={busy} aria-label={`导出${item.name}`} className={buttonClass} onClick={() => void exportBook(item as AdminBook)}><Download size={14} />{exportingId === item.id ? '导出中…' : '一键导出'}</button>}<button type="button" disabled={busy} aria-label={`编辑${item.name}`} className={buttonClass} onClick={() => edit(item)}><Pencil size={14} />编辑</button><button type="button" disabled={busy} aria-label={`删除${item.name}`} className={`${buttonClass} text-red-400`} onClick={() => void remove(item)}><Trash2 size={14} /></button></div>{level !== 'sentence' && <button type="button" disabled={busy} className="flex items-center gap-1 text-sm font-black text-[#1899d6] hover:underline" onClick={() => level === 'book' ? navigate(item.id) : navigate(bookId, item.id)}>{level === 'book' ? '管理章节' : '管理句子'}<ChevronRight size={16} /></button>}</div>
+            <div className="p-5"><div className="flex gap-3 items-start"><div className="shrink-0 flex items-center justify-center rounded-xl bg-sky-50 text-[#1cb0f6] w-11 h-11">{'icon' in item ? <span className="text-2xl">{item.icon}</span> : level === 'sentence' ? <MessageSquare size={23} /> : <BookOpen size={23} />}</div><div className="min-w-0 flex-1"><h3 className="font-black text-slate-700 break-words">{level === 'sentence' && <span className="mr-2 text-slate-400 tabular-nums">{index + 1}.</span>}{item.name}</h3>{'spanish' in item ? <>{item.imageUrl && <img src={item.imageUrl} alt={`${item.name}配图`} className="mt-3 max-h-32 rounded-lg object-contain" />}<p lang="es" className="mt-2 text-sm text-[#1899d6] break-words">{item.spanish}</p><p className="text-sm text-slate-500 mt-1 break-words">{item.chinese}</p><p className="text-xs text-slate-400 mt-2">{item.vocabHints.length} 个生词</p></> : <><p className="mt-1 text-sm text-slate-500 line-clamp-2 break-words">{item.description || '暂无描述'}</p><p className="mt-2 text-xs font-bold text-slate-400">{'chapterCount' in item ? `${item.chapterCount} 个章节` : `${item.sentenceCount} 个句子`}</p></>}</div></div>
+              <div className="flex flex-wrap justify-between gap-2 mt-5 pt-4 border-t border-slate-100"><div className="flex flex-wrap gap-2">{level === 'sentence' && <><button type="button" disabled={busy || loading || index === 0} aria-label={`上移${item.name}`} title="上移" className={buttonClass} onClick={() => void moveSentence(item.id, -1)}><ArrowUp size={14} />上移</button><button type="button" disabled={busy || loading || index === sentences.length - 1} aria-label={`下移${item.name}`} title="下移" className={buttonClass} onClick={() => void moveSentence(item.id, 1)}><ArrowDown size={14} />下移</button></>}{level === 'book' && <button type="button" disabled={busy} aria-label={`导出${item.name}`} className={buttonClass} onClick={() => void exportBook(item as AdminBook)}><Download size={14} />{exportingId === item.id ? '导出中…' : '一键导出'}</button>}<button type="button" disabled={busy} aria-label={`编辑${item.name}`} className={buttonClass} onClick={() => edit(item)}><Pencil size={14} />编辑</button><button type="button" disabled={busy} aria-label={`删除${item.name}`} className={`${buttonClass} text-red-400`} onClick={() => void remove(item)}><Trash2 size={14} /></button></div>{level !== 'sentence' && <button type="button" disabled={busy} className="flex items-center gap-1 text-sm font-black text-[#1899d6] hover:underline" onClick={() => level === 'book' ? navigate(item.id) : navigate(bookId, item.id)}>{level === 'book' ? '管理章节' : '管理句子'}<ChevronRight size={16} /></button>}</div>
             </div>
           </article>)}
         </div>}

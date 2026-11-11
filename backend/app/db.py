@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from sqlalchemy import create_engine, String, Text, Integer, JSON, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import create_engine, String, Text, Integer, JSON, DateTime, ForeignKey, UniqueConstraint, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 database_url = os.environ['DATABASE_URL']
@@ -41,8 +41,10 @@ class Chapter(Base):
     icon: Mapped[str] = mapped_column(String(32), default='📖')
 class Exercise(Base):
     __tablename__ = 'exercises'
+    __table_args__ = (Index('ix_exercises_chapter_order', 'chapter_id', 'sort_order'),)
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     data: Mapped[dict] = mapped_column(JSON)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
     chapter_id: Mapped[str | None] = mapped_column(ForeignKey('chapters.id'), nullable=True, index=True)
 class Star(Base):
     __tablename__ = 'stars'

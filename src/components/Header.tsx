@@ -5,11 +5,14 @@
 
 import React from 'react';
 import { Flame, Heart, Gem, Star, Volume2, VolumeX, ChevronLeft, Layers } from 'lucide-react';
+import { getPracticeProgress } from '../utils/practiceProgress';
 import { soundEffects } from '../services/soundEffects';
 
 interface HeaderProps {
   currentIndex: number;
   totalQuestions: number;
+  status: 'unanswered' | 'correct' | 'incorrect';
+  isCompleted: boolean;
   hearts: number;
   streak: number;
   gems: number;
@@ -26,6 +29,8 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   currentIndex,
   totalQuestions,
+  status,
+  isCompleted,
   hearts,
   streak,
   gems,
@@ -38,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
   onExitPractice,
   heartLostPulse,
 }) => {
-  const progressRatio = totalQuestions > 0 ? (currentIndex / totalQuestions) * 100 : 0;
+  const progress = getPracticeProgress(currentIndex, totalQuestions, status, isCompleted);
 
   return (
     <header className="w-full max-w-4xl mx-auto px-4 pt-3 pb-2 flex flex-col gap-2">
@@ -72,11 +77,12 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Center: Duolingo Green Progress Bar */}
-        <div className="flex-1 max-w-md mx-2">
-          <div className="w-full bg-[#e5e5e5] h-3.5 rounded-full overflow-hidden p-0.5">
+        <div className="flex-1 min-w-0 max-w-md mx-2">
+          <p className="mb-1 text-right text-[10px] font-bold text-slate-400 tabular-nums whitespace-nowrap">已完成 {progress.completed}/{progress.total} 句</p>
+          <div role="progressbar" aria-label="句子练习进度" aria-valuenow={progress.completed} aria-valuemin={0} aria-valuemax={progress.total} aria-valuetext={`已完成 ${progress.completed}/${progress.total} 句`} className="w-full bg-[#e5e5e5] h-3.5 rounded-full overflow-hidden p-0.5">
             <div
               className="bg-[#58cc02] h-full rounded-full transition-all duration-500 ease-out relative"
-              style={{ width: `${Math.max(progressRatio, 4)}%` }}
+              style={{ width: `${progress.percent}%` }}
             >
               {/* Highlight gleam */}
               <div className="absolute top-0.5 left-2 right-2 h-1 bg-white/40 rounded-full" />
