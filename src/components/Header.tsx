@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Flame, Heart, Gem, Star, Volume2, VolumeX, X, Layers } from 'lucide-react';
+import { Flame, Heart, Gem, Star, Volume2, VolumeX, ChevronLeft, Layers } from 'lucide-react';
 import { soundEffects } from '../services/soundEffects';
 
 interface HeaderProps {
@@ -51,10 +51,10 @@ export const Header: React.FC<HeaderProps> = ({
                 soundEffects.playClickSound();
                 onExitPractice();
               }}
-              title="退出本轮练习"
-              className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
+              title="返回教材馆"
+              className="flex items-center p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
             >
-              <X className="w-5 h-5" />
+              <ChevronLeft className="w-5 h-5" /><span className="text-xs font-bold">换书</span>
             </button>
           )}
 

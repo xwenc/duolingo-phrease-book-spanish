@@ -9,6 +9,9 @@ export interface VocabHint {
 }
 
 export interface Exercise {
+  bookId?: string;
+  bookTitle?: string;
+  bookLevel?: string;
   id: string;
   unitId: string;
   unitName: string;

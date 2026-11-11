@@ -21,6 +21,9 @@ import { UnitSelectorModal } from './components/UnitSelectorModal';
 import { CompletionCelebration } from './components/CompletionCelebration';
 import { OwlMood } from './components/DuoOwl';
 
+import { getBooks, type BooksProgressMap, type BookProgress } from './data/books';
+import { BooksLibrary } from './components/BooksLibrary';
+
 export default function App() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [authenticated, setAuthenticated] = useState(false);
@@ -35,7 +38,7 @@ export default function App() {
   const [xp, setXp] = useState(0);
   const [gems, setGems] = useState(0);
   const [starredIds, setStarredIds] = useState<string[]>([]);
-  const [attemptId, setAttemptId] = useState(() => crypto.randomUUID());
+  const [attemptId, setAttemptId] = useState<string>(() => crypto.randomUUID());
   const applyStats = (stats: Stats) => {
     setCanResetData(Boolean(stats.canResetData));
     setHearts(stats.hearts); setStreak(stats.streak); setXp(stats.xp);
@@ -73,18 +76,49 @@ export default function App() {
   const [isHeartRestockOpen, setIsHeartRestockOpen] = useState<boolean>(false);
   const [isUnitSelectorOpen, setIsUnitSelectorOpen] = useState<boolean>(false);
 
+  const [currentView, setCurrentView] = useState<'books' | 'practice'>('books');
+  const [currentBookId, setCurrentBookId] = useState('');
+  const [booksProgress, setBooksProgress] = useState<BooksProgressMap>({});
+  const books = useMemo(() => getBooks(exercises), [exercises]);
+  const bookExercises = books.find(book => book.id === currentBookId)?.exercises || [];
+  const snapshot = (): BookProgress => ({ selectedUnitId, isStarredMode, currentIndex,
+    currentTranscript, status, evaluationResult, attemptId, isCompleted,
+    sessionCorrectCount, sessionXpGained, sessionGemsGained,
+    starredIds: bookExercises.filter(ex => starredIds.includes(ex.id)).map(ex => ex.id) });
+  const openBooks = () => {
+    if (busy) return;
+    TTSService.stop(); sttService.cancel();
+    setBooksProgress(previous => ({ ...previous, [currentBookId]: snapshot() }));
+    setIsDifficultiesModalOpen(false); setIsUnitSelectorOpen(false); setIsHeartRestockOpen(false);
+    setCurrentView('books');
+  };
+  const selectBook = (id: string) => {
+    TTSService.stop(); sttService.cancel();
+    const saved = booksProgress[id];
+    setCurrentBookId(id);
+    if (saved) {
+      setSelectedUnitId(saved.selectedUnitId); setIsStarredMode(saved.isStarredMode);
+      setCurrentIndex(saved.currentIndex); setCurrentTranscript(saved.currentTranscript);
+      setStatus(saved.status); setEvaluationResult(saved.evaluationResult); setAttemptId(saved.attemptId);
+      setIsCompleted(saved.isCompleted); setSessionCorrectCount(saved.sessionCorrectCount);
+      setSessionXpGained(saved.sessionXpGained); setSessionGemsGained(saved.sessionGemsGained);
+      if (saved.isCompleted) handleRestart();
+    } else { setSelectedUnitId('all'); setIsStarredMode(false); handleRestart(); }
+    setCurrentView('practice');
+  };
+
   // 3. 计算当前激活的题目池
   const activeExercises: Exercise[] = useMemo(() => {
     if (isStarredMode) {
-      const filtered = exercises.filter((ex) => starredIds.includes(ex.id));
-      return filtered.length > 0 ? filtered : exercises.slice(0, 5);
+      const filtered = bookExercises.filter((ex) => starredIds.includes(ex.id));
+      return filtered.length > 0 ? filtered : bookExercises.slice(0, 5);
     }
     if (selectedUnitId !== 'all') {
-      const filtered = exercises.filter((ex) => ex.unitId === selectedUnitId);
-      return filtered.length > 0 ? filtered : exercises;
+      const filtered = bookExercises.filter((ex) => ex.unitId === selectedUnitId);
+      return filtered.length > 0 ? filtered : bookExercises;
     }
-    return exercises;
-  }, [isStarredMode, selectedUnitId, starredIds, exercises]);
+    return bookExercises;
+  }, [isStarredMode, selectedUnitId, starredIds, bookExercises]);
 
   const currentExercise = activeExercises[currentIndex] || activeExercises[0] || exercises[0];
 
@@ -96,8 +130,8 @@ export default function App() {
 
   // 星标列表
   const starredExercises = useMemo(() => {
-    return exercises.filter((ex) => starredIds.includes(ex.id));
-  }, [starredIds, exercises]);
+    return bookExercises.filter((ex) => starredIds.includes(ex.id));
+  }, [starredIds, bookExercises]);
 
   const updateStar = async (id: string, enabled: boolean) => {
     if (busy) return;
@@ -197,6 +231,7 @@ export default function App() {
         method: 'POST', body: JSON.stringify({ password, confirmed: true }),
       });
       applyStats(result.stats); setExercises(result.exercises);
+      setBooksProgress({}); setCurrentBookId(''); setCurrentView('books');
       setSelectedUnitId('all'); setIsStarredMode(false); handleRestart();
       setIsDifficultiesModalOpen(false); setIsHeartRestockOpen(false); setIsUnitSelectorOpen(false);
       setResetOpen(false); setNotice('练习数据已清空，已载入最新题库，可以重新开始。');
@@ -224,12 +259,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f7f7f7] text-[#4b4b4b] flex flex-col font-['Nunito',sans-serif]">
-      <div className="px-4 pt-2 flex justify-between text-sm"><span>经验值 {xp}</span><button disabled={busy} onClick={async () => { try { await api('/logout', { method: 'POST' }); setAuthenticated(false); handleRestart(); } catch (err) { setError((err as Error).message); } }}>退出登录</button></div>
+      <div className="px-4 pt-2 flex justify-between text-sm"><span>经验值 {xp}</span><button disabled={busy} onClick={async () => { try { await api('/logout', { method: 'POST' }); setAuthenticated(false); setBooksProgress({}); setCurrentBookId(''); setCurrentView('books'); handleRestart(); } catch (err) { setError((err as Error).message); } }}>退出登录</button></div>
       {canResetData && <div className="px-4 text-right"><button disabled={busy} className="text-xs text-red-600 underline" onClick={() => { TTSService.stop(); sttService.cancel(); setResetOpen(true); }}>清空练习数据</button></div>}
       {resetOpen && <ResetPracticeModal busy={busy} onClose={() => setResetOpen(false)} onReset={handleResetData} />}
       {notice && <p role="status" className="px-4 text-green-700">{notice}</p>}
       {error && <p role="alert" className="p-3 text-red-600">{error}</p>}
       {busy && <div role="status" className="fixed inset-0 z-[100] bg-white/60 flex items-center justify-center" aria-live="polite">正在保存…</div>}
+      {currentView === 'books' ? <BooksLibrary books={books} progress={booksProgress} currentBookId={currentBookId} starredIds={starredIds} onSelectBook={selectBook} /> : <>
       {/* Duolingo Sticky Top Header */}
       <Header
         currentIndex={currentIndex}
@@ -243,7 +279,7 @@ export default function App() {
         onToggleMute={handleToggleMute}
         onOpenDifficultiesModal={() => setIsDifficultiesModalOpen(true)}
         onOpenUnitSelector={() => setIsUnitSelectorOpen(true)}
-        onExitPractice={() => handleRestart()}
+        onExitPractice={openBooks}
         heartLostPulse={heartLostPulse}
       />
 
@@ -340,10 +376,11 @@ export default function App() {
       <UnitSelectorModal
         isOpen={isUnitSelectorOpen}
         onClose={() => setIsUnitSelectorOpen(false)}
-        exercises={exercises}
+        exercises={bookExercises}
         selectedUnitId={selectedUnitId}
         onSelectUnit={handleSelectUnit}
       />
+      </>}
     </div>
   );
 }
