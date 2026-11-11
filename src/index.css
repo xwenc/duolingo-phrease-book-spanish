@@ -111,3 +111,25 @@
 .animate-heart-pulse {
   animation: heart-pulse 0.4s ease-in-out;
 }
+
+/* Answer feedback stays readable after the short animation finishes. */
+.owl-happy { transform-origin: center bottom; animation: owl-happy-hop 650ms ease-in-out 2; }
+.owl-sad { transform-origin: center bottom; animation: owl-sad-droop 500ms ease-out both; }
+.owl-sad .owl-tear { animation: owl-tear-fall 1200ms ease-in-out 2; }
+@keyframes owl-happy-hop {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  25% { transform: translateY(-9px) rotate(-6deg); }
+  55% { transform: translateY(-3px) rotate(5deg); }
+  80% { transform: translateY(-6px) rotate(-3deg); }
+}
+@keyframes owl-sad-droop {
+  from { transform: translateY(0) rotate(0); }
+  to { transform: translateY(4px) rotate(-5deg); }
+}
+@keyframes owl-tear-fall {
+  0%, 100% { opacity: 1; transform: translateY(0); }
+  70% { opacity: 0.2; transform: translateY(8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .owl-happy, .owl-sad, .owl-sad .owl-tear { animation: none; }
+}
