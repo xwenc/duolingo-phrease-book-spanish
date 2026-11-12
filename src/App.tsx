@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { createRequestId } from './utils/requestId';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { api, submitAttempt, fetchCatalog, type LearningCatalog, type Stats } from './services/api';
 import { AuthGate } from './components/AuthGate';
@@ -40,7 +41,7 @@ export default function App() {
   const [xp, setXp] = useState(0);
   const [gems, setGems] = useState(0);
   const [starredIds, setStarredIds] = useState<string[]>([]);
-  const [attemptId, setAttemptId] = useState<string>(() => crypto.randomUUID());
+  const [attemptId, setAttemptId] = useState<string>(() => createRequestId());
   const applyStats = (stats: Stats) => {
     setCanResetData(Boolean(stats.canResetData));
     setHearts(stats.hearts); setStreak(stats.streak); setXp(stats.xp);
@@ -62,6 +63,7 @@ export default function App() {
   const [selectedUnitId, setSelectedUnitId] = useState<string | 'all'>('all');
   const [isStarredMode, setIsStarredMode] = useState<boolean>(false);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [autoReadExerciseId, setAutoReadExerciseId] = useState<string | null>(null);
   const [currentTranscript, setCurrentTranscript] = useState<string>('');
   const [status, setStatus] = useState<'unanswered' | 'correct' | 'incorrect'>('unanswered');
   const [evaluationResult, setEvaluationResult] = useState<EvaluationResult | null>(null);
@@ -98,6 +100,7 @@ export default function App() {
     starredIds: bookExercises.filter(ex => starredIds.includes(ex.id)).map(ex => ex.id)
   });
   const openBooks = () => {
+    setAutoReadExerciseId(null);
     if (busy) return;
     TTSService.stop(); sttService.cancel();
     setBooksProgress(previous => ({ ...previous, [currentBookId]: snapshot() }));
@@ -105,6 +108,7 @@ export default function App() {
     setCurrentView('books');
   };
   const selectBook = (id: string) => {
+    setAutoReadExerciseId(null);
     if (!books.find(book => book.id === id)?.exercises.length) return;
     TTSService.stop(); sttService.cancel();
     const saved = booksProgress[id];
@@ -136,9 +140,19 @@ export default function App() {
   const currentExercise = activeExercises[currentIndex] || activeExercises[0] || exercises[0];
 
   useEffect(() => {
-    const showTTSError = (event: Event) => setError((event as CustomEvent<string>).detail);
+    let lastTTSError = '';
+    const showTTSError = (event: Event) => {
+      lastTTSError = (event as CustomEvent<string>).detail;
+      setError(lastTTSError);
+    };
+    const clearTTSError = () => setError(current => current === lastTTSError ? '' : current);
     window.addEventListener('tts-error', showTTSError);
-    return () => { window.removeEventListener('tts-error', showTTSError); TTSService.stop(); };
+    window.addEventListener('tts-start', clearTTSError);
+    return () => {
+      window.removeEventListener('tts-error', showTTSError);
+      window.removeEventListener('tts-start', clearTTSError);
+      TTSService.stop();
+    };
   }, []);
 
   // 星标列表
@@ -158,6 +172,7 @@ export default function App() {
 
   // 开启难点专项强化练习
   const handleStartStarredPractice = () => {
+    setAutoReadExerciseId(null);
     resetSessionStats();
     setIsDifficultiesModalOpen(false);
     setIsStarredMode(true);
@@ -165,12 +180,13 @@ export default function App() {
     setCurrentTranscript('');
     setStatus('unanswered');
     setEvaluationResult(null);
-    setAttemptId(crypto.randomUUID());
+    setAttemptId(createRequestId());
     setIsCompleted(false);
   };
 
   // 切换单元
   const handleSelectUnit = (unitId: string | 'all') => {
+    setAutoReadExerciseId(null);
     resetSessionStats();
     setSelectedUnitId(unitId);
     setIsStarredMode(false);
@@ -178,7 +194,7 @@ export default function App() {
     setCurrentTranscript('');
     setStatus('unanswered');
     setEvaluationResult(null);
-    setAttemptId(crypto.randomUUID());
+    setAttemptId(createRequestId());
     setIsCompleted(false);
   };
 
@@ -207,13 +223,15 @@ export default function App() {
   const handleNext = () => {
     TTSService.stop();
     if (currentIndex + 1 < activeExercises.length) {
+      setAutoReadExerciseId(activeExercises[currentIndex + 1].id);
       setCurrentIndex((prev) => prev + 1);
       setCurrentTranscript('');
       setStatus('unanswered');
       setEvaluationResult(null);
-      setAttemptId(crypto.randomUUID());
+      setAttemptId(createRequestId());
     } else {
       // 达成通关
+      setAutoReadExerciseId(null);
       setIsCompleted(true);
 
     }
@@ -221,11 +239,12 @@ export default function App() {
 
   // 重新开始
   const handleRestart = () => {
+    setAutoReadExerciseId(null);
     setCurrentIndex(0);
     setCurrentTranscript('');
     setStatus('unanswered');
     setEvaluationResult(null);
-    setAttemptId(crypto.randomUUID());
+    setAttemptId(createRequestId());
     setIsCompleted(false);
     resetSessionStats();
   };
@@ -337,6 +356,7 @@ export default function App() {
               {/* Question Card */}
               <QuestionCard
                 exercise={currentExercise}
+                autoRead={autoReadExerciseId === currentExercise.id}
                 isStarred={starredIds.includes(currentExercise.id)}
                 onToggleStar={handleToggleStar}
                 owlMood={owlMood}
@@ -356,7 +376,7 @@ export default function App() {
                   key={`${currentExercise.id}:${resetOpen}`}
                   shortcutsEnabled={!resetOpen && !isDifficultiesModalOpen && !isHeartRestockOpen && !isUnitSelectorOpen}
                   currentTranscript={currentTranscript}
-                  onTranscriptChange={text => { setCurrentTranscript(text); setAttemptId(crypto.randomUUID()); }}
+                  onTranscriptChange={text => { setCurrentTranscript(text); setAttemptId(createRequestId()); }}
                   isEvaluating={status !== 'unanswered'}
                   disabled={busy || status !== 'unanswered'}
                 />

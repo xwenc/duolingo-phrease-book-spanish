@@ -12,6 +12,7 @@ import { soundEffects } from '../services/soundEffects';
 
 interface QuestionCardProps {
   exercise: Exercise;
+  autoRead?: boolean;
   isStarred: boolean;
   onToggleStar: (id: string) => void;
   owlMood: OwlMood;
@@ -19,6 +20,7 @@ interface QuestionCardProps {
 
 export const QuestionCard: React.FC<QuestionCardProps> = ({
   exercise,
+  autoRead = false,
   isStarred,
   onToggleStar,
   owlMood,
@@ -30,11 +32,14 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const [failedImage, setFailedImage] = useState('');
 
   useEffect(() => {
-    TTSService.schedule(exercise.spanish, 1000,
-      () => { setIsPlayingTTS(true); setPlayingRate(1); },
-      () => { setIsPlayingTTS(false); setPlayingRate(null); });
+    setIsPlayingTTS(false); setPlayingRate(null);
+    if (autoRead) {
+      TTSService.schedule(exercise.spanish, 1000,
+        () => { setIsPlayingTTS(true); setPlayingRate(1); },
+        () => { setIsPlayingTTS(false); setPlayingRate(null); });
+    }
     return () => TTSService.stop();
-  }, [exercise.id, exercise.spanish]);
+  }, [autoRead, exercise.id, exercise.spanish]);
 
   const handlePlayTTS = (rate: number) => {
     soundEffects.playClickSound();

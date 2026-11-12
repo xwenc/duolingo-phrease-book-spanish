@@ -5,8 +5,9 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 from .book_format import BookImport, exercise_data
 from .db import SessionLocal, Exercise, Book, Chapter
+from .ordering import next_book_order
 
-DEFAULT_BOOK = Path(__file__).with_name('book.json')
+DEFAULT_BOOK = Path(__file__).with_name('西班牙语 · 日常口语.json')
 
 
 def load_book(path=None):
@@ -54,13 +55,16 @@ def sync_book(db, payload):
         return item
 
     # No thumbnail in the export: preserve any existing cover, leave new covers empty.
-    upsert(Book, book_id, {'name': source.name, 'description': source.description}, 'books')
+    book_values = {'name': source.name, 'description': source.description}
+    if db.get(Book, book_id) is None:
+        book_values['sort_order'] = next_book_order(db)
+    upsert(Book, book_id, book_values, 'books')
     for chapter_index, source_chapter in enumerate(source.chapters):
         chapter_id = source_chapter.id or stable_id(f'{book_id}/chapter/{chapter_index}')
         existing_chapter = db.get(Chapter, chapter_id)
         if existing_chapter and existing_chapter.book_id != book_id:
             raise ValueError(f'章节 ID {chapter_id} 已属于其他书籍，未导入任何数据')
-        chapter = upsert(Chapter, chapter_id, {'book_id': book_id, 'name': source_chapter.name,
+        chapter = upsert(Chapter, chapter_id, {'book_id': book_id, 'sort_order': chapter_index, 'name': source_chapter.name,
                          'description': source_chapter.description, 'icon': source_chapter.icon}, 'chapters')
         for sentence_index, sentence in enumerate(source_chapter.sentences):
             id = sentence.id or stable_id(f'{book_id}/{chapter_id}/sentence/{sentence_index}')
@@ -76,7 +80,7 @@ def sync_book(db, payload):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='按导出格式幂等同步书籍，默认 app/book.json')
+    parser = argparse.ArgumentParser(description='按导出格式幂等同步书籍，默认 app/西班牙语 · 日常口语.json')
     parser.add_argument('--file', type=Path, default=DEFAULT_BOOK, help='书籍导出 JSON 文件路径')
     args = parser.parse_args()
     try:

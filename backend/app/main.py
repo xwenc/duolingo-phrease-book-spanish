@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import hashlib
 import os
 import secrets
+import asyncio
 import httpx
 from datetime import datetime, timedelta, date
 from typing import Literal
@@ -40,7 +41,10 @@ app.include_router(covers_router)
 @app.middleware('http')
 async def origin_guard(request: Request, call_next):
     if request.method not in ('GET', 'HEAD', 'OPTIONS'):
-        if request.headers.get('origin') != os.getenv('APP_ORIGIN', 'http://localhost:3000'):
+        allowed_origins = {os.getenv('APP_ORIGIN', 'http://localhost:3000').strip()}
+        allowed_origins.update(origin.strip() for origin in os.getenv('APP_ORIGINS', '').split(',') if origin.strip())
+        allowed_origins.discard('')
+        if request.headers.get('origin') not in allowed_origins:
             from fastapi.responses import JSONResponse
             return JSONResponse({'detail': '不允许的请求来源'}, status_code=403)
     response = await call_next(request)
@@ -176,16 +180,24 @@ def health(db=Depends(get_db)):
 
 
 @app.get('/api/tts')
-def tts_audio(text: str = Query(min_length=1, max_length=500),
+async def tts_audio(request: Request, text: str = Query(min_length=1, max_length=500),
               speed: float = Query(default=1, ge=0.5, le=1.2),
               user=Depends(current_user)):
     if not text.strip():
         raise HTTPException(422, '朗读内容不能为空')
     try:
-        result = httpx.post(speech_url() + '/synthesize',
-                            json={'text': text, 'speed': speed}, timeout=600)
-        if result.status_code == 503:
-            raise HTTPException(503, '朗读服务忙，请稍后重试', headers={'Retry-After': '2'})
+        # TTS and STT share the native inference lock. Give short recordings time
+        # to finish rather than returning a 503 audio source to the browser.
+        for attempt in range(4):
+            if await request.is_disconnected():
+                raise HTTPException(499, '朗读请求已取消')
+            result = await run_in_threadpool(httpx.post, speech_url() + '/synthesize',
+                                            json={'text': text, 'speed': speed}, timeout=600)
+            if result.status_code != 503:
+                break
+            if attempt == 3:
+                raise HTTPException(503, '朗读服务仍繁忙，请稍后点击喇叭重试', headers={'Retry-After': '2'})
+            await asyncio.sleep(2)
         result.raise_for_status()
     except httpx.HTTPError:
         raise HTTPException(503, '本地朗读服务暂不可用，请稍后重试')

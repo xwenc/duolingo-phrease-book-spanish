@@ -119,7 +119,7 @@ def test_local_tts_auth_validation_and_audio(client):
         assert synth.call_args.kwargs['json'] == {'text':'Hola', 'speed':0.6}
     with patch('app.main.httpx.post', side_effect=httpx.ConnectError('offline')):
         assert c.get('/api/tts', params={'text':'Hola'}).status_code == 503
-    with patch('app.main.httpx.post', return_value=httpx.Response(503)):
+    with patch('app.main.httpx.post', return_value=httpx.Response(503)), patch('app.main.asyncio.sleep'):
         assert c.get('/api/tts', params={'text':'Hola'}).headers['retry-after'] == '2'
 
 def test_failed_answers_automatically_star_without_duplicates(client):

@@ -1,6 +1,6 @@
 # 服务端重构与部署
 
-本分支使用 React + FastAPI + MySQL 8.4 + 宿主机原生语音服务（mlx-audio / Ming 3.0 TTS 0.5B + faster-whisper STT）。用户、收藏、答题记录及积分保存在 MySQL；浏览器只保留音效偏好，不再以 localStorage 作为账户数据源。示例种子文件 `backend/app/book.json` 使用后台书籍导出格式，运行时教材从 API 获取。
+本分支使用 React + FastAPI + MySQL 8.4 + 宿主机原生语音服务（mlx-audio / Ming 3.0 TTS 0.5B + faster-whisper STT）。用户、收藏、答题记录及积分保存在 MySQL；浏览器只保留音效偏好，不再以 localStorage 作为账户数据源。示例种子文件 `backend/app/西班牙语 · 日常口语.json` 使用后台书籍导出格式，运行时教材从 API 获取。
 
 ## Apple Silicon 本地启动
 
@@ -73,7 +73,7 @@ cd backend
 
 ## 数据变更与升级
 
-Alembic 管理数据库结构，初始迁移在 `backend/migrations/versions/0001_initial.py`。升级已有环境先备份数据库，再运行 `docker compose up -d --build api web`。API 容器启动会先执行 `alembic upgrade head`，成功后才提供服务，失败则停止；不会自动 seed。`init` 用于首次初始化或显式同步示例书籍，升级时不必执行，以免覆盖同 ID 教材。种子导入使用 `backend/app/book.json` 的 `habla-espanol-book` 版本 1 格式，与后台导入共用校验；按 ID 幂等同步书籍、章节、句子，不删除额外内容、账户或练习记录，保留已有封面。开发环境可运行 `npm run dev:backend:seed -- --file ./path/to/book.json` 指定其他导出文件。未来数据库变更必须新增迁移文件；运行时不会自动 `create_all` 或覆盖数据。
+Alembic 管理数据库结构，初始迁移在 `backend/migrations/versions/0001_initial.py`。升级已有环境先备份数据库，再运行 `docker compose up -d --build api web`。API 容器启动会先执行 `alembic upgrade head`，成功后才提供服务，失败则停止；不会自动 seed。`init` 用于首次初始化或显式同步示例书籍，升级时不必执行，以免覆盖同 ID 教材。种子导入使用 `backend/app/西班牙语 · 日常口语.json` 的 `habla-espanol-book` 版本 1 格式，与后台导入共用校验；按 ID 幂等同步书籍、章节、句子，不删除额外内容、账户或练习记录，保留已有封面。开发环境可运行 `npm run dev:backend:seed -- --file ./path/to/book.json` 指定其他导出文件。未来数据库变更必须新增迁移文件；运行时不会自动 `create_all` 或覆盖数据。
 
 原演示 localStorage 里的积分与收藏没有可信来源，不自动导入账户。已有用户需注册新账户。
 

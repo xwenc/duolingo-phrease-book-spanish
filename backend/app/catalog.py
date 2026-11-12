@@ -8,6 +8,7 @@ from pydantic import ValidationError, RootModel, Field, BaseModel, ConfigDict
 from sqlalchemy import select, delete, func
 from .book_format import BookInput, ChapterInput, SentenceInput, BookImport, ImportSentence, exercise_data
 from .auth import current_user, require_admin
+from .ordering import next_book_order
 from .db import get_db, Book, Chapter, Exercise, Star, Attempt
 
 router = APIRouter(prefix='/api/admin', dependencies=[Depends(require_admin)])
@@ -19,6 +20,18 @@ def find(db, model, id):
     if item is None:
         raise HTTPException(404, '内容不存在，可能已被删除')
     return item
+
+
+def lock_book(db, book_id):
+    book = db.scalar(select(Book).where(Book.id == book_id).with_for_update().execution_options(populate_existing=True))
+    if book is None:
+        raise HTTPException(404, '内容不存在，可能已被删除')
+    return book
+
+
+def next_chapter_order(db, book_id):
+    maximum = db.scalar(select(func.max(Chapter.sort_order)).where(Chapter.book_id == book_id))
+    return 0 if maximum is None else maximum + 1
 
 
 def lock_chapter(db, chapter_id):
@@ -48,19 +61,19 @@ def sentence_data(exercise):
 
 
 def practice_exercises(db):
-    rows = db.execute(select(Exercise, Chapter, Book).outerjoin(Chapter, Exercise.chapter_id == Chapter.id).outerjoin(Book, Chapter.book_id == Book.id).order_by(Book.id, Chapter.id, Exercise.sort_order, Exercise.id)).all()
+    rows = db.execute(select(Exercise, Chapter, Book).outerjoin(Chapter, Exercise.chapter_id == Chapter.id).outerjoin(Book, Chapter.book_id == Book.id).order_by(Book.sort_order, Book.id, Chapter.sort_order, Chapter.id, Exercise.sort_order, Exercise.id)).all()
     return [{**exercise.data, **(dict(bookId=book.id, bookTitle=book.name, bookDescription=book.description, bookThumbnail=book.thumbnail, unitId=chapter.id, unitName=chapter.name, unitIcon=chapter.icon) if chapter and book else {})} for exercise, chapter, book in rows]
 
 
 @router.get('/books')
 def books(db=Depends(get_db)):
     counts = dict(db.execute(select(Chapter.book_id, func.count()).group_by(Chapter.book_id)).all())
-    return [book_data(book, counts.get(book.id, 0)) for book in db.scalars(select(Book).order_by(Book.id))]
+    return [book_data(book, counts.get(book.id, 0)) for book in db.scalars(select(Book).order_by(Book.sort_order, Book.id))]
 
 
 @router.post('/books', status_code=201)
 def create_book(body: BookInput, db=Depends(get_db)):
-    book = Book(id=str(uuid4()), **body.model_dump())
+    book = Book(id=str(uuid4()), sort_order=next_book_order(db), **body.model_dump())
     db.add(book); db.commit()
     return book_data(book)
 
@@ -87,13 +100,13 @@ def delete_book(book_id: str, db=Depends(get_db)):
 def chapters(book_id: str, db=Depends(get_db)):
     find(db, Book, book_id)
     counts = dict(db.execute(select(Exercise.chapter_id, func.count()).group_by(Exercise.chapter_id)).all())
-    return [chapter_data(chapter, counts.get(chapter.id, 0)) for chapter in db.scalars(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.id))]
+    return [chapter_data(chapter, counts.get(chapter.id, 0)) for chapter in db.scalars(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.sort_order, Chapter.id))]
 
 
 @router.post('/books/{book_id}/chapters', status_code=201)
 def create_chapter(book_id: str, body: ChapterInput, db=Depends(get_db)):
-    find(db, Book, book_id)
-    chapter = Chapter(id=str(uuid4()), book_id=book_id, **body.model_dump())
+    lock_book(db, book_id)
+    chapter = Chapter(id=str(uuid4()), book_id=book_id, sort_order=next_chapter_order(db, book_id), **body.model_dump())
     db.add(chapter); db.commit()
     return chapter_data(chapter)
 
@@ -110,6 +123,8 @@ def update_chapter(chapter_id: str, body: ChapterInput, db=Depends(get_db)):
 @router.delete('/chapters/{chapter_id}')
 def delete_chapter(chapter_id: str, db=Depends(get_db)):
     chapter = find(db, Chapter, chapter_id)
+    lock_book(db, chapter.book_id)
+    lock_chapter(db, chapter_id)
     if db.scalar(select(Exercise.id).where(Exercise.chapter_id == chapter_id).limit(1)):
         raise HTTPException(409, '请先删除章节中的句子')
     db.delete(chapter); db.commit()
@@ -154,14 +169,14 @@ def delete_sentence(sentence_id: str, db=Depends(get_db)):
 @learning_router.get('/catalog')
 def learning_catalog(db=Depends(get_db)):
     """The learner library includes empty books/chapters, without invented client data."""
-    all_chapters = list(db.scalars(select(Chapter).order_by(Chapter.id)))
+    all_chapters = list(db.scalars(select(Chapter).join(Book, Chapter.book_id == Book.id).order_by(Book.sort_order, Book.id, Chapter.sort_order, Chapter.id)))
     all_exercises = practice_exercises(db)
     chapter_counts = {}
     sentence_counts = dict(db.execute(select(Exercise.chapter_id, func.count()).group_by(Exercise.chapter_id)).all())
     for chapter in all_chapters:
         chapter_counts[chapter.book_id] = chapter_counts.get(chapter.book_id, 0) + 1
     return {
-        'books': [book_data(book, chapter_counts.get(book.id, 0)) for book in db.scalars(select(Book).order_by(Book.id))],
+        'books': [book_data(book, chapter_counts.get(book.id, 0)) for book in db.scalars(select(Book).order_by(Book.sort_order, Book.id))],
         'chapters': [chapter_data(chapter, sentence_counts.get(chapter.id, 0)) for chapter in all_chapters],
         'exercises': all_exercises,
     }
@@ -170,8 +185,8 @@ def learning_catalog(db=Depends(get_db)):
 @router.get('/books/{book_id}/export')
 def export_book(book_id: str, db=Depends(get_db)):
     book = find(db, Book, book_id)
-    chapters = list(db.scalars(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.id)))
-    exercises = db.scalars(select(Exercise).join(Chapter, Exercise.chapter_id == Chapter.id).where(Chapter.book_id == book_id).order_by(Chapter.id, Exercise.sort_order, Exercise.id))
+    chapters = list(db.scalars(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.sort_order, Chapter.id)))
+    exercises = db.scalars(select(Exercise).join(Chapter, Exercise.chapter_id == Chapter.id).where(Chapter.book_id == book_id).order_by(Chapter.sort_order, Chapter.id, Exercise.sort_order, Exercise.id))
     grouped = {}
     for exercise in exercises:
         sentence = sentence_data(exercise)
@@ -213,10 +228,10 @@ def import_book(file: UploadFile, db=Depends(get_db)):
         # All validation precedes writes. A single transaction creates a fresh copy.
         source = validated.book
         try:
-            book = Book(id=str(uuid4()), name=source.name, description=source.description, thumbnail='')
+            book = Book(id=str(uuid4()), sort_order=next_book_order(db), name=source.name, description=source.description, thumbnail='')
             db.add(book); db.flush()
-            for source_chapter in source.chapters:
-                chapter = Chapter(id=str(uuid4()), book_id=book.id, name=source_chapter.name, description=source_chapter.description, icon=source_chapter.icon)
+            for chapter_position, source_chapter in enumerate(source.chapters):
+                chapter = Chapter(id=str(uuid4()), book_id=book.id, sort_order=chapter_position, name=source_chapter.name, description=source_chapter.description, icon=source_chapter.icon)
                 db.add(chapter); db.flush()
                 for position, source_sentence in enumerate(source_chapter.sentences):
                     id = str(uuid4())
@@ -296,3 +311,23 @@ def reorder_sentences(chapter_id: str, body: SentenceOrder, db=Depends(get_db)):
         by_id[id].sort_order = position
     db.commit()
     return {'sentenceIds': body.sentenceIds}
+
+
+class ChapterOrder(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    chapterIds: list[str] = Field(max_length=100000)
+
+
+@router.put('/books/{book_id}/chapters/order')
+def reorder_chapters(book_id: str, body: ChapterOrder, db=Depends(get_db)):
+    lock_book(db, book_id)
+    if len(set(body.chapterIds)) != len(body.chapterIds):
+        raise HTTPException(422, '章节 ID 不能重复')
+    chapters = list(db.scalars(select(Chapter).where(Chapter.book_id == book_id).with_for_update()))
+    by_id = {chapter.id: chapter for chapter in chapters}
+    if set(body.chapterIds) != set(by_id):
+        raise HTTPException(409, '书籍章节已发生变化，请重新加载列表后排序')
+    for position, id in enumerate(body.chapterIds):
+        by_id[id].sort_order = position
+    db.commit()
+    return {'chapterIds': body.chapterIds}

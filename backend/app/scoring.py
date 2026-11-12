@@ -3,11 +3,11 @@ import unicodedata
 from difflib import SequenceMatcher
 
 def words(text):
-    return re.findall(r'[^\W_]+', text, re.UNICODE)
+    return re.findall(r'[^\W_]+', unicodedata.normalize('NFC', text), re.UNICODE)
 
 def normalize(text):
     # Preserve ñ: año and ano are different Spanish words.
-    return ''.join(c for c in unicodedata.normalize('NFD', text.lower().replace('ñ', '\ue000'))
+    return ''.join(c for c in unicodedata.normalize('NFD', unicodedata.normalize('NFC', text).lower().replace('ñ', '\ue000'))
                    if unicodedata.category(c) != 'Mn').replace('\ue000', 'ñ')
 
 def evaluate(reference, transcript):

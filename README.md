@@ -140,7 +140,8 @@ docker compose down
 | --- | --- |
 | `MYSQL_PASSWORD` | 必填，业务数据库密码 |
 | `MYSQL_ROOT_PASSWORD` | 必填，数据库 root 密码 |
-| `APP_ORIGIN` | `http://localhost:3000`，校验写请求来源 |
+| `APP_ORIGIN` | 主访问地址，默认 `http://localhost:3000`，校验写请求来源 |
+| `APP_ORIGINS` | 额外允许的访问地址，逗号分隔，精确匹配协议、主机及端口 |
 | `COOKIE_SECURE` | 示例配置为 `false`；HTTPS 部署应设为 `true` |
 | `SPEECH_URL` | Compose 默认 `http://host.docker.internal:8001`；宿主机直接运行 API 时默认 `http://127.0.0.1:8001` |
 | `ADMIN_EMAIL` | 管理员登录邮箱；API 启动时自动创建，拥有清空练习数据权限 |
@@ -271,7 +272,7 @@ speech/.venv/bin/python scripts/smoke_test.py --audio /absolute/path/to/spanish.
 
 ## 题库与数据维护
 
-默认 seed 文件为 `backend/app/book.json`，采用后台“一键导出”的 `habla-espanol-book` 版本 1 格式。示例包含一本书、6 个章节、23 个句子；不含封面图片或地址。运行时教材仍从数据库经 `/api/catalog` 获取。
+默认 seed 文件为 `backend/app/西班牙语 · 日常口语.json`，采用后台“一键导出”的 `habla-espanol-book` 版本 1 格式。示例包含一本书、6 个章节、23 个句子；不含封面图片或地址。运行时教材仍从数据库经 `/api/catalog` 获取。
 
 开发环境初始化（在项目根目录执行，自动读取 `.env.development.local`）：
 
@@ -286,17 +287,17 @@ npm run dev:backend:seed -- --file ./path/to/exported-book.json
 
 ```sh
 cd backend
-.venv/bin/python -m app.seed                  # 默认 app/book.json
+.venv/bin/python -m app.seed                  # 默认 app/西班牙语 · 日常口语.json
 .venv/bin/python -m app.seed --file /absolute/path/book.json
 ```
 
-Docker 初始化默认导入镜像中的 `app/book.json`；修改示例文件后重新构建初始化服务：
+Docker 初始化默认导入镜像中的 `app/西班牙语 · 日常口语.json`；修改示例文件后重新构建初始化服务：
 
 ```sh
 docker compose --profile setup run --build --rm init
 ```
 
-格式示例（完整字段见 `backend/app/book.json`）：
+格式示例（完整字段见 `backend/app/西班牙语 · 日常口语.json`）：
 
 ```json
 {
@@ -331,7 +332,7 @@ docker compose --profile setup run --build --rm init
 
 seed 按导出文件中的 ID 插入或更新书籍、章节和句子，重复执行不会创建副本；保留账户、收藏、答题记录及文件之外的教材内容。已有封面保留，新书封面留空。ID 与其他书籍内容冲突时拒绝导入。建议保留导出 ID；缺少 ID 时按书名和章节/句子位置生成稳定 ID，此时修改书名或调整顺序会改变对应 ID。
 
-后台“一键导入”仍会重新分配 ID 并创建独立副本，与 seed 的幂等同步不同。管理员全库重置是独立的破坏性操作：保留账户与密码，清空全库书籍、章节、句子及所有账户的练习记录、收藏和成长数据，再以 `book.json` 重建示例教材。数据库结构由 Alembic 管理，更新前应备份数据库和封面文件。
+后台“一键导入”仍会重新分配 ID 并创建独立副本，与 seed 的幂等同步不同。管理员全库重置是独立的破坏性操作：保留账户与密码，清空全库书籍、章节、句子及所有账户的练习记录、收藏和成长数据，再以示例书籍 JSON 重建示例教材。数据库结构由 Alembic 管理，更新前应备份数据库和封面文件。
 
 ## 部署说明
 
@@ -365,7 +366,7 @@ docker compose up -d --build api web
 
 迁移 `0002` 将已有题目归入书籍和章节，保留账户、收藏和答题记录。教材馆和单元选择器统一读取 `/api/catalog`，包含空书籍和空章节；无句子的内容展示为空且不可开始练习。前端不再内置题库、书名、级别或章节图标映射。删除书籍或章节前须清空其下级内容；删除句子同时删除其关联收藏和答题记录，已获得的 XP 和宝石保留。返回教材馆时刷新题库；若本次修改过教材，会重置当前页面缓存的练习位置和判题结果，避免引用已修改或删除的句子。
 
-注意：手动执行 `app.seed` 会使用 `app/book.json` 更新同 ID 的书籍、章节和句子；“清空练习数据”会清空全库教材并用该示例书籍重建。
+注意：手动执行 `app.seed` 会使用 `app/西班牙语 · 日常口语.json` 更新同 ID 的书籍、章节和句子；“清空练习数据”会清空全库教材并用该示例书籍重建。
 
 开发启动命令 `npm run dev:backend` 会先执行 `alembic upgrade head`，迁移成功后再启动 API 和初始化管理员；迁移失败则停止启动。不会自动运行 seed，因此重复启动不会覆盖后台编辑的教材。空数据库启动后可直接登录后台添加教材。
 
@@ -442,3 +443,67 @@ docker compose up -d --build --no-deps api
 ```
 
 本机开发数据库与 Docker 内 MySQL 是两个独立环境，迁移必须在实际运行 API 的环境中执行。此修复只新增排序字段并保留原有句子、账户和练习记录，不需要重新 seed 或清空数据库。
+
+### 章节排序
+
+后台“章节目录”支持“上移 / 下移”并自动保存，显示当前序号。单元选择器、整本书综合练习及书籍导出的章节数组均使用保存的顺序；新建章节追加到末尾，整本书导入与 seed 保留 JSON 中的章节数组顺序。
+
+迁移 `0004` 新增章节排序字段，已有章节按原 ID 顺序初始化，不修改内容和练习数据。开发与 Docker 启动均自动执行迁移，也可手动运行 `npm run dev:backend:migrate`。管理员接口：`PUT /api/admin/books/{book_id}/chapters/order`，请求 `{ "chapterIds": ["章节ID", "..."] }` 必须包含该书全部章节且无重复，遇到其他操作造成列表变化时返回 409，需重新加载再排序。
+
+### 新增内容默认置底
+
+新建书籍默认排在书籍库和教材馆底部，导入整本书同样追加到底部；新建章节追加到该书章节末尾，新建句子及批量导入句子追加到当前章节末尾。编辑已有内容不改变顺序，章节和句子仍可手动上移 / 下移。整本书导入保留文件内部的章节和句子数组顺序。
+
+迁移 `0005` 为书籍增加持久排序，保留已有列表顺序。普通 seed 新增书籍也追加到底部，更新已有书籍不改变它在书籍库的位置；seed 的章节和句子仍按文件数组顺序同步。开发和 Docker API 启动会自动迁移，已运行的开发后端可执行 `npm run dev:backend:migrate`。
+
+### 示范朗读的触发时机
+
+默认进入教材、切换单元、进入难点复习、重新开始或恢复某本书进度时，不自动朗读。仅在判题后点击“继续 / 继续下一题”（或对应 Enter 快捷键）并实际进入下一句时，等待 1 秒后自动播放一次新句的原速朗读；最后一句进入完成页时不播放。手动原速、慢速和词汇试听仍可随时使用，离开练习会停止正在播放或待播放的音频。
+
+### ñ 与 n 的识别和判题
+
+语音转写输出统一为 Unicode NFC；判题在分词前也先执行 NFC，以兼容 `ñ` 和 `n + 组合波浪号` 两种编码。前后端均保留 `ñ` 与 `n` 的区别，不自动把 `ano` 改成 `año`，也不将它们按同一个词评分。
+
+如果原始转写文本已经把含 ñ 的词识别成 n，这是识别结果错误，Unicode 处理无法恢复真实读音。可对同一段录音比较多语言 `base` 与 `small` 的效果（不要使用 `.en` 模型）；speech 已固定 `language='es'`。切换模型需重启语音服务，较大模型也不保证每句都正确。
+
+### 朗读服务忙碌时的恢复
+
+TTS 和 STT 共用模型推理锁。原生语音服务命中音频缓存时直接返回 WAV，不再受正在进行的转写阻塞；缓存访问单独加锁。未缓存音频遇到 503，业务 API 每隔 2 秒重试，最多重试 3 次，等待窗口约 6 秒（不含合成本身耗时）。持续不可用时仍明确返回失败，不无限排队；浏览器取消旧音频请求后，服务端不会继续发起下一次重试。
+
+播放成功后自动清除上一条朗读失败提示，不影响其他错误；浏览器禁止自动播放时仍提示手动点击喇叭。下一句等待 1 秒自动朗读的规则保持不变。修改原生语音服务后需要重启 speech，Docker API 和 Web 需重新构建。
+
+### 本机与局域网同时访问
+
+Docker Web 使用 `0.0.0.0:3000:80` 时，同一 Wi-Fi 的手机可通过电脑的局域网 IP 访问。写请求的来源校验须同时包含需要使用的地址，例如 `.env`：
+
+```dotenv
+APP_ORIGIN=http://192.168.0.102:3000
+APP_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+COOKIE_SECURE=false
+```
+
+将 IP 替换为电脑当前地址；保留 HTTP 时使用 `COOKIE_SECURE=false`。配置修改后执行 `docker compose up -d --build api web`。开发 API 使用 `.env.development.local` 的同名变量，修改后需重启开发后端。未列出的来源仍返回 403。局域网 HTTP 仅适合浏览、键盘练习和播放；手机麦克风需要配置可信 HTTPS。
+
+### Android 手机通过局域网 HTTPS 录音
+
+可选配置 `compose.lan-https.yaml` 在现有 Web 前增加 HTTPS 入口 `8443`，原 `3000` HTTP 页面仍保留。先确认手机与电脑在同一 Wi-Fi，并查询电脑局域网 IP，下面以 `192.168.0.102` 为例：
+
+```sh
+backend/.venv/bin/python scripts/setup-lan-https.py --ip 192.168.0.102
+```
+
+在 `.env` 的 `APP_ORIGINS` 中追加 `https://192.168.0.102:8443,https://localhost:8443,https://127.0.0.1:8443`，保留原来的访问地址，然后启动：
+
+```sh
+docker compose -f compose.yaml -f compose.lan-https.yaml up -d --build api web https
+```
+
+Android 操作：
+
+1. 用手机浏览器下载 `http://192.168.0.102:3000/lan-root-ca.crt`。
+2. 在系统设置搜索“安装证书”，选择“CA 证书”（不是 VPN/应用证书），安装刚下载的 `HablaEspanol-LAN-CA.crt`；系统可能要求输入手机锁屏密码。具体入口因 Android 品牌和版本而异。
+3. 使用 Chrome 打开 `https://192.168.0.102:8443`。确认没有证书警告，再登录并允许该站点使用麦克风。若刚安装仍提示不受信任，完全退出 Chrome 后重开。
+
+证书只在 `.local-test/https/` 本地生成；根 CA 不会被自动加入电脑或手机的系统信任。手机只需安装公开的 `rootCA.crt`，不要复制、分享任何私钥。HTTPS 容器仅挂载站点证书和站点私钥，不挂载 CA 私钥。
+
+IP 改变或站点证书过期（有效期 90 天）后，用新 IP 再次运行脚本，更新 `.env` 来源白名单并重启 HTTPS 容器；脚本复用已有 CA，所以手机不必重新安装根证书。启用后更新服务也应使用上述两份 Compose 配置。若以后只使用 HTTPS，可设置 `COOKIE_SECURE=true` 并重新登录；当前保留 HTTP 兼容配置。

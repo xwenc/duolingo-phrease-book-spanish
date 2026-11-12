@@ -7,16 +7,18 @@ import { DiffToken, EvaluationResult } from '../types';
 
 /**
  * 西班牙语字符串归一化：
- * 1. 使用 NFD 拆解重音符号（á, é, í, ó, ú, ü 等）
+ * 1. 去除元音重音，保留 ñ 与 n 的区别，兼容组合编码
  * 2. 移除西语标点符号（¿, ?, ¡, !, ., ,, ;, :, ", ', - 等）
  * 3. 统一转为小写并去除冗余空白
  */
 export function normalizeSpanish(text: string): string {
   if (!text) return '';
   return text
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // 移除组合音标
+    .normalize('NFC')
     .toLowerCase()
+    .normalize('NFD')
+    .replace(/n\u0303/g, 'ñ') // Preserve the Spanish letter before removing accent marks.
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[¿?¡!.,;:"'()[\]{}—–\-_\/\\*&^%$#@~`+=]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -61,11 +63,11 @@ function isWordMatch(standard: string, spoken: string): { isMatch: boolean; isCl
     return { isMatch: true, isClose: false };
   }
 
-  // 西语特殊情况处理：ñ vs n
+  // ñ and n are different letters; do not accept this as a fuzzy match.
   const stdSimple = normStd.replace(/ñ/g, 'n');
   const spkSimple = normSpk.replace(/ñ/g, 'n');
   if (stdSimple === spkSimple) {
-    return { isMatch: true, isClose: true };
+    return { isMatch: false, isClose: false };
   }
 
   // 短词 (<= 3 字母) 必须严格匹配

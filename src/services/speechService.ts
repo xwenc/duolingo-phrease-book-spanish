@@ -38,11 +38,15 @@ export class TTSService {
       const blocked = error instanceof Error && error.name === 'NotAllowedError';
       window.dispatchEvent(new CustomEvent('tts-error', { detail: blocked
         ? '浏览器阻止了自动播放，请点击喇叭播放示范朗读。'
-        : '本地朗读播放失败，请稍后再试；若登录已过期，请重新登录。' }));
+        : '朗读音频暂时无法加载，服务可能繁忙或连接中断，请稍后点击喇叭重试。' }));
       finish();
     };
     TTSService.finish = finish;
-    audio.onplaying = () => onStart?.();
+    audio.onplaying = () => {
+      if (finished) return;
+      window.dispatchEvent(new Event('tts-start'));
+      onStart?.();
+    };
     audio.onended = finish;
     audio.onerror = fail;
     // Call play directly in the click handler, preserving mobile browser activation.

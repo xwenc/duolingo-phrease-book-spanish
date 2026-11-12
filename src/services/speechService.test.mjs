@@ -125,3 +125,53 @@ test('auto narration plays once after one second and stop cancels pending playba
   assert.match(played[1],/manual/);
   TTSService.stop();
 });
+
+test('successful narration emits a recovery event and stale playback cannot clear errors', async t => {
+  const { TTSService } = await import('./speechService.ts');
+  const previousWindow = globalThis.window;
+  const previousAudio = globalThis.Audio;
+  const target = new EventTarget();
+  globalThis.window = target;
+  let audio;
+  globalThis.Audio = class {
+    constructor() { audio = this; }
+    play() { return Promise.resolve(); }
+    pause() {}
+    removeAttribute() {}
+    load() {}
+  };
+  t.after(() => { TTSService.stop(); globalThis.window = previousWindow; globalThis.Audio = previousAudio; });
+  let starts = 0, ends = 0, events = 0;
+  target.addEventListener('tts-start', () => events++);
+  TTSService.speak('Hola', 1, () => starts++, () => ends++);
+  const oldHandler = audio.onplaying;
+  oldHandler();
+  assert.equal(events, 1);
+  assert.equal(starts, 1);
+  TTSService.stop();
+  oldHandler();
+  assert.equal(events, 1);
+  assert.equal(ends, 1);
+});
+
+test('autoplay blocking has a distinct message without blaming login expiry', async t => {
+  const { TTSService } = await import('./speechService.ts');
+  const previousWindow = globalThis.window;
+  const previousAudio = globalThis.Audio;
+  const target = new EventTarget();
+  globalThis.window = target;
+  globalThis.Audio = class {
+    play() { const error = new Error('blocked'); error.name = 'NotAllowedError'; return Promise.reject(error); }
+    pause() {}
+    removeAttribute() {}
+    load() {}
+  };
+  t.after(() => { TTSService.stop(); globalThis.window = previousWindow; globalThis.Audio = previousAudio; });
+  const messages = [];
+  target.addEventListener('tts-error', event => messages.push(event.detail));
+  TTSService.speak('Hola');
+  await setImmediate();
+  assert.equal(messages.length, 1);
+  assert.match(messages[0], /浏览器阻止了自动播放/);
+  assert.doesNotMatch(messages[0], /登录/);
+});

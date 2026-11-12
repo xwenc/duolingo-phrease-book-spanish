@@ -3,6 +3,7 @@ import io
 import os
 import platform
 import threading
+import unicodedata
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 
@@ -20,6 +21,7 @@ VOICE = os.getenv('TTS_VOICE') or None
 lock = threading.Lock()
 models = {}
 cache = OrderedDict()
+cache_lock = threading.Lock()
 CACHE_BYTES = 8 * 1024 * 1024
 
 
@@ -59,13 +61,18 @@ def synthesize(body: Synthesis):
     text = body.text.strip()
     if not text:
         raise HTTPException(422, 'Text must not be empty')
+    key = (text, body.speed)
+    # Cached WAVs need no model inference and must not contend with STT.
+    audio = cached_audio(key)
+    if audio is not None:
+        return Response(audio, media_type='audio/wav')
     if not lock.acquire(blocking=False):
         raise HTTPException(503, 'Speech engine busy', headers={'Retry-After': '2'})
     try:
-        key = (text, body.speed)
-        if key not in cache:
+        audio = cached_audio(key)
+        if audio is None:
             base_key = (text, 1.0)
-            audio = cache.get(base_key)
+            audio = cached_audio(base_key)
             if audio is None:
                 chunks = [waveform_array(r.audio) for r in models['tts'].generate(
                     text, voice=VOICE, lang_code='es')]
@@ -83,9 +90,6 @@ def synthesize(body: Synthesis):
                          format='WAV', subtype='PCM_16')
                 audio = output.getvalue()
                 cache_audio(key, audio)
-        else:
-            audio = cache[key]
-            cache.move_to_end(key)
         return Response(audio, media_type='audio/wav')
     finally:
         lock.release()
@@ -99,11 +103,20 @@ def waveform_array(audio):
     return np.asarray(audio, dtype=np.float32).reshape(-1)
 
 
+def cached_audio(key):
+    with cache_lock:
+        audio = cache.get(key)
+        if audio is not None:
+            cache.move_to_end(key)
+        return audio
+
+
 def cache_audio(key, audio):
-    if len(audio) <= CACHE_BYTES:
-        while cache and sum(map(len, cache.values())) + len(audio) > CACHE_BYTES:
-            cache.popitem(last=False)
-        cache[key] = audio
+    with cache_lock:
+        if len(audio) <= CACHE_BYTES:
+            while cache and sum(map(len, cache.values())) + len(audio) > CACHE_BYTES:
+                cache.popitem(last=False)
+            cache[key] = audio
 
 
 def change_speed(waveform, rate, speed):
@@ -162,7 +175,7 @@ def transcribe(data):
         segments, _ = models['stt'].transcribe(
             audio, language='es', vad_filter=True, condition_on_previous_text=False)
         # Consume the lazy generator while holding the inference lock.
-        return ' '.join(segment.text.strip() for segment in segments).strip()
+        return unicodedata.normalize('NFC', ' '.join(segment.text.strip() for segment in segments).strip())
     finally:
         lock.release()
 

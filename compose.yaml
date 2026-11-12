@@ -28,6 +28,7 @@ services:
     environment:
       DATABASE_URL: mysql+pymysql://spanish:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}@mysql:3306/spanish?charset=utf8mb4
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      APP_ORIGINS: ${APP_ORIGINS:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       SPEECH_URL: ${SPEECH_URL:-http://host.docker.internal:8001}
       ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL}
@@ -48,7 +49,7 @@ services:
   web:
     build: .
     ports:
-      - '127.0.0.1:3000:80'
+      - '0.0.0.0:3000:80'
     depends_on:
       api:
         condition: service_healthy

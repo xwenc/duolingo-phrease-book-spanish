@@ -1,0 +1,17 @@
+# Optional LAN HTTPS frontend. Generate certificates before starting this stack.
+services:
+  web:
+    volumes:
+      - ./.local-test/https/rootCA.crt:/usr/share/nginx/html/lan-root-ca.crt:ro
+  https:
+    image: nginx:1.28-alpine
+    ports:
+      - '0.0.0.0:8443:443'
+    volumes:
+      - ./deploy/nginx.lan-https.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./.local-test/https/server.crt:/etc/nginx/lan-tls/server.crt:ro
+      - ./.local-test/https/server.key:/etc/nginx/lan-tls/server.key:ro
+    depends_on:
+      web:
+        condition: service_started
+    restart: unless-stopped

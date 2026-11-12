@@ -28,14 +28,18 @@ class LoginSession(Base):
     expires: Mapped[datetime] = mapped_column(DateTime)
 class Book(Base):
     __tablename__ = 'books'
+    __table_args__ = (Index('ix_books_order', 'sort_order'),)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default='')
     thumbnail: Mapped[str] = mapped_column(String(2048), default='')
 class Chapter(Base):
     __tablename__ = 'chapters'
+    __table_args__ = (Index('ix_chapters_book_order', 'book_id', 'sort_order'),)
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     book_id: Mapped[str] = mapped_column(ForeignKey('books.id'), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default='')
     icon: Mapped[str] = mapped_column(String(32), default='📖')

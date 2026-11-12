@@ -34,7 +34,8 @@ def test_existing_bank_is_migrated_without_losing_progress(tmp_path):
         assert db.execute('SELECT xp,hearts,password FROM users').fetchone() == (45, 3, 'stored-hash')
         assert db.execute('SELECT count(*) FROM stars').fetchone()[0] == 1
         assert db.execute('PRAGMA foreign_key_check').fetchall() == []
+        assert db.execute('SELECT sort_order FROM chapters').fetchall() == [(0,), (0,)]
         assert db.execute("SELECT id,sort_order FROM exercises WHERE chapter_id='unit-1' ORDER BY sort_order").fetchall() == [('u1-1', 0), ('u1-2', 1)]
-        assert db.execute('SELECT version_num FROM alembic_version').fetchone()[0] == '0003'
+        assert db.execute('SELECT version_num FROM alembic_version').fetchone()[0] == '0005'
         assert json.loads(db.execute('SELECT data FROM exercises WHERE id=?', (rows[0]['id'],)).fetchone()[0]) == rows[0]
     migrate('head')

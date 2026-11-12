@@ -87,3 +87,42 @@ def test_speed_adjustment_preserves_pitch():
     assert 1.5 < len(slow) / len(waveform) < 1.8
     frequency = np.argmax(np.abs(np.fft.rfft(slow))) * rate / len(slow)
     assert abs(frequency - 440) < 5
+
+
+def test_transcription_preserves_enye_and_normalizes_combining_tilde(monkeypatch):
+    from types import SimpleNamespace
+    import numpy as np
+    model = Mock()
+    model.transcribe.return_value = (iter([SimpleNamespace(text=' Espan\u0303a, man\u0303ana, niño y año. ')]), None)
+    monkeypatch.setitem(server.models, 'stt', model)
+    monkeypatch.setattr(server, 'decode_audio', lambda data: np.full(16000, 0.1, dtype=np.float32))
+    assert server.transcribe(b'audio') == 'España, mañana, niño y año.'
+    assert model.transcribe.call_args.kwargs['language'] == 'es'
+
+
+def test_transcription_does_not_guess_enye_from_n(monkeypatch):
+    from types import SimpleNamespace
+    import numpy as np
+    model = Mock()
+    model.transcribe.return_value = (iter([SimpleNamespace(text='ano')]), None)
+    monkeypatch.setitem(server.models, 'stt', model)
+    monkeypatch.setattr(server, 'decode_audio', lambda data: np.full(16000, 0.1, dtype=np.float32))
+    assert server.transcribe(b'audio') == 'ano'
+
+
+def test_cached_narration_plays_while_transcription_holds_inference_lock(monkeypatch):
+    model = Mock()
+    monkeypatch.setitem(server.models, 'tts', model)
+    server.cache.clear()
+    server.cache_audio(('cached sentence', 1), b'cached-wav')
+    server.lock.acquire()
+    try:
+        response = server.synthesize(server.Synthesis(text='cached sentence', speed=1))
+        assert response.body == b'cached-wav'
+        model.generate.assert_not_called()
+        with pytest.raises(HTTPException) as error:
+            server.synthesize(server.Synthesis(text='not cached', speed=1))
+        assert error.value.status_code == 503
+    finally:
+        server.lock.release()
+        server.cache.clear()
